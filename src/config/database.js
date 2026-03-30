@@ -7,11 +7,40 @@ const mongoose = require('mongoose');
 
 // Get MongoDB URI from environment
 const MONGO_URI = process.env.MONGO_URI;
+const CLEAN_MONGO_URI = MONGO_URI.trim().replace(/^["']|["']$/g, '');
 
 // Validation
 if (!MONGO_URI) {
   console.error('❌ ERROR: MONGO_URI environment variable is not set');
   console.error('💡 Please set MONGO_URI in your Render environment variables');
+  console.error('📝 Example: mongodb+srv://username:password@cluster.mongodb.net/dbname?retryWrites=true&w=majority');
+  process.exit(1);
+}
+
+// Sanitize: remove leading/trailing whitespace and quotes
+const cleanMongoURI = MONGO_URI.trim().replace(/^["']|["']$/g, '');
+
+// Validate URI format
+if (!cleanMongoURI.startsWith('mongodb://') && !cleanMongoURI.startsWith('mongodb+srv://')) {
+  console.error('❌ ERROR: Invalid MONGO_URI format');
+  console.error('📝 Must start with mongodb:// or mongodb+srv://');
+  console.error('💡 Current value:', cleanMongoURI.substring(0, 50) + '...');
+  process.exit(1);
+}
+
+// Check for common issues
+if (cleanMongoURI.includes('retryWrites') && !cleanMongoURI.includes('retryWrites=')) {
+  console.error('❌ ERROR: MONGO_URI has malformed retryWrites parameter');
+  console.error('📝 Correct format: ?retryWrites=true&w=majority');
+  console.error('💡 Current value:', cleanMongoURI);
+  process.exit(1);
+}
+
+// If using SRV, ensure database name is included
+if (cleanMongoURI.startsWith('mongodb+srv://') && !cleanMongoURI.split('/')[5]) {
+  console.error('❌ ERROR: MONGO_URI missing database name');
+  console.error('📝 Format: mongodb+srv://user:pass@cluster/dbname?retryWrites=true&w=majority');
+  console.error('💡 Current value:', cleanMongoURI);
   process.exit(1);
 }
 
@@ -32,7 +61,7 @@ const connectDB = async () => {
     try {
       console.log('🔗 Connecting to MongoDB...');
 
-      await mongoose.connect(MONGO_URI, mongooseOptions);
+      await mongoose.connect(CLEAN_MONGO_URI, mongooseOptions);
 
       console.log('✅ MongoDB Connected Successfully');
       console.log(`📊 Database: ${mongoose.connection.name || 'expense-tracker'}`);
