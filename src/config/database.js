@@ -1,62 +1,106 @@
-const mongoose = require('mongoose');
-const logger = require('./logger');
+/**
+ * MongoDB Database Connection Configuration
+ * Uses mongoose with proper error handling for production deployment
+ */
 
+const mongoose = require('mongoose');
+
+// Get MongoDB URI from environment
 const MONGO_URI = process.env.MONGO_URI;
 
+// Validation
 if (!MONGO_URI) {
-  logger.error('❌ MONGO_URI environment variable is not set');
+  console.error('❌ ERROR: MONGO_URI environment variable is not set');
+  console.error('💡 Please set MONGO_URI in your Render environment variables');
   process.exit(1);
 }
 
+// Connection options
+const mongooseOptions = {
+  // For MongoDB Atlas with SRV records
+  // Use consistent options for both local and Atlas
+};
+
+/**
+ * Connect to MongoDB with retry logic
+ */
 const connectDB = async () => {
-  try {
-    logger.info(`🔗 Connecting to MongoDB Atlas...`);
+  const maxRetries = 3;
+  let retryCount = 0;
 
-    await mongoose.connect(MONGO_URI, {
-      // Mongoose 6+ connection options
-    });
+  const attemptConnection = async () => {
+    try {
+      console.log('🔗 Connecting to MongoDB...');
 
-    logger.info('✅ MongoDB connected successfully');
-    logger.info(`📊 Database: ${mongoose.connection.name}`);
-    logger.info(`🌍 Host: ${mongoose.connection.host}`);
+      await mongoose.connect(MONGO_URI, mongooseOptions);
 
-    mongoose.connection.on('error', (err) => {
-      logger.error('❌ MongoDB connection error:', err.message);
-    });
+      console.log('✅ MongoDB Connected Successfully');
+      console.log(`📊 Database: ${mongoose.connection.name || 'expense-tracker'}`);
+      console.log(`🌍 Host: ${mongoose.connection.host}`);
 
-    mongoose.connection.on('disconnected', () => {
-      logger.warn('⚠️ MongoDB disconnected');
-    });
+      // Connection event handlers
+      mongoose.connection.on('error', (err) => {
+        console.error('❌ MongoDB Connection Error:', err.message);
+      });
 
-    mongoose.connection.on('reconnected', () => {
-      logger.info('✅ MongoDB reconnected');
-    });
+      mongoose.connection.on('disconnected', () => {
+        console.warn('⚠️ MongoDB Disconnected');
+      });
 
-  } catch (error) {
-    logger.error('❌ MongoDB connection failed:', error.message);
-    if (process.env.NODE_ENV !== 'production') {
-      logger.error('Full error:', error);
+      mongoose.connection.on('reconnected', () => {
+        console.log('✅ MongoDB Reconnected');
+      });
+
+      return true;
+    } catch (error) {
+      console.error(`❌ MongoDB Connection Failed (Attempt ${retryCount + 1}/${maxRetries}):`, error.message);
+
+      retryCount++;
+
+      if (retryCount < maxRetries) {
+        const delay = 2000 * retryCount; // Exponential backoff
+        console.log(`⏳ Retrying in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        return attemptConnection();
+      } else {
+        console.error('❌ Max retries reached. Could not connect to MongoDB.');
+        console.error('💡 Check your MONGO_URI and network connectivity');
+        process.exit(1);
+      }
     }
-    logger.error('💡 Troubleshooting tips:');
-    logger.error('   1. Verify MONGO_URI in .env is correct');
-    logger.error('   2. Ensure your IP is whitelisted in MongoDB Atlas');
-    logger.error('   3. Check username/password is correct');
-    logger.error('   4. Verify cluster is running and accessible');
+  };
+
+  await attemptConnection();
+};
+
+// Graceful shutdown
+const gracefulShutdown = async (signal) => {
+  console.log(`${signal} received. Closing MongoDB connection...`);
+
+  try {
+    await mongoose.connection.close();
+    console.log('📦 MongoDB connection closed');
+    process.exit(0);
+  } catch (error) {
+    console.error('❌ Error closing MongoDB:', error);
     process.exit(1);
   }
 };
 
-// Graceful shutdown
-process.on('SIGINT', async () => {
-  await mongoose.connection.close();
-  logger.info('📦 MongoDB connection closed through app termination');
-  process.exit(0);
+// Handle termination signals
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+
+// Handle unhandled rejections
+process.on('unhandledRejection', (err, promise) => {
+  console.error('❌ Unhandled Promise Rejection:', err);
+  process.exit(1);
 });
 
-process.on('SIGTERM', async () => {
-  await mongoose.connection.close();
-  logger.info('📦 MongoDB connection closed through app termination');
-  process.exit(0);
+// Handle uncaught exceptions
+process.on('uncaughtException', (err) => {
+  console.error('❌ Uncaught Exception:', err);
+  process.exit(1);
 });
 
 module.exports = { connectDB };
