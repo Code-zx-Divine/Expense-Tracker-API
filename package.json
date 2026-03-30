@@ -1,0 +1,35 @@
+{
+  "name": "expense-tracker-api",
+  "version": "1.0.0",
+  "description": "A production-ready Expense Tracker API with Node.js, Express, and MongoDB Atlas",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "expense-tracker",
+    "api",
+    "nodejs",
+    "express",
+    "mongodb",
+    "atlas"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "mongoose": "^8.5.0",
+    "helmet": "^7.1.0",
+    "cors": "^2.8.5",
+    "express-rate-limit": "^7.2.0",
+    "express-validator": "^7.0.1",
+    "winston": "^3.13.0",
+    "compression": "^1.7.4"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.4"
+  }
+}

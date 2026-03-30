@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(timeout 3 bash -c 'echo > /dev/tcp/localhost/27017')",
+      "Bash(net start:*)",
+      "Bash(npm run:*)",
+      "Bash(where mongod:*)",
+      "Bash(nslookup cluster0.veilklf.mongodb.net)",
+      "Bash(dig _mongodb._tcp.cluster0.veilklf.mongodb.net SRV)",
+      "Bash(nslookup -type=SRV _mongodb._tcp.cluster0.veilklf.mongodb.net)",
+      "Bash(git add:*)",
+      "Bash(git checkout:*)",
+      "Bash(git rebase:*)"
+    ]
+  }
+}
