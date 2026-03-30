@@ -11,7 +11,13 @@
       "Bash(nslookup -type=SRV _mongodb._tcp.cluster0.veilklf.mongodb.net)",
       "Bash(git add:*)",
       "Bash(git checkout:*)",
-      "Bash(git rebase:*)"
+      "Bash(git rebase:*)",
+      "Bash(node -c src/server.js)",
+      "Bash(node -c src/app.js)",
+      "Bash(node -c src/config/database.js)",
+      "Bash(node -e \"require\\(''''./src/server.js''''\\)\")",
+      "Bash(node:*)",
+      "Bash(node -e \"require\\(''''./src/config/database.js''''\\)\")"
     ]
   }
 }

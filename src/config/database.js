@@ -7,7 +7,6 @@ const mongoose = require('mongoose');
 
 // Get MongoDB URI from environment
 const MONGO_URI = process.env.MONGO_URI;
-const CLEAN_MONGO_URI = MONGO_URI.trim().replace(/^["']|["']$/g, '');
 
 // Validation
 if (!MONGO_URI) {
@@ -37,7 +36,13 @@ if (cleanMongoURI.includes('retryWrites') && !cleanMongoURI.includes('retryWrite
 }
 
 // If using SRV, ensure database name is included
-if (cleanMongoURI.startsWith('mongodb+srv://') && !cleanMongoURI.split('/')[5]) {
+// mongodb+srv://user:pass@cluster/dbname?params
+// Split by '/' → ['mongodb+srv:', '', 'user:pass@cluster', 'dbname?params']
+const pathParts = cleanMongoURI.split('/');
+// Database name should be in pathParts[3] (index 3)
+const dbPart = pathParts[3] || '';
+
+if (cleanMongoURI.startsWith('mongodb+srv://') && (!dbPart || dbPart.includes('@') || dbPart.startsWith('?'))) {
   console.error('❌ ERROR: MONGO_URI missing database name');
   console.error('📝 Format: mongodb+srv://user:pass@cluster/dbname?retryWrites=true&w=majority');
   console.error('💡 Current value:', cleanMongoURI);
