@@ -1,0 +1,321 @@
+const express = require('express');
+const router = express.Router();
+const ApiKey = require('../models/ApiKey');
+const { body, validationResult } = require('express-validator');
+const CONSTANTS = require('../utils/constants');
+
+// Admin secret - CHANGE THIS IN PRODUCTION!
+const ADMIN_SECRET = process.env.ADMIN_SECRET || 'change-this-secret-in-production';
+
+// Middleware to protect admin routes
+const adminAuth = (req, res, next) => {
+  const secret = req.headers['x-admin-secret'];
+  if (secret !== ADMIN_SECRET) {
+    return res.status(401).json({
+      success: false,
+      error: 'Unauthorized',
+      message: 'Invalid admin credentials'
+    });
+  }
+  next();
+};
+
+/**
+ * POST /admin/apikeys - Create new API key
+ * Headers: X-Admin-Secret: your-secret
+ */
+router.post(
+  '/apikeys',
+  adminAuth,
+  [
+    body('email').isEmail().withMessage('Valid email required'),
+    body('name').notEmpty().withMessage('Name required'),
+    body('plan').optional().isIn(['free', 'basic', 'pro', 'enterprise']),
+    body('trialDays').optional().isInt({ min: 0 }).withMessage('Trial days must be non-negative integer')
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          error: 'ValidationError',
+          details: errors.mapped()
+        });
+      }
+
+      const { email, name, plan = 'free', trialDays = 0 } = req.body;
+
+      // Check if key already exists for this email
+      const existing = await ApiKey.findOne({ email });
+      if (existing) {
+        return res.status(409).json({
+          success: false,
+          error: 'Conflict',
+          message: 'API key already exists for this email'
+        });
+      }
+
+      // Generate key
+      const crypto = require('crypto');
+      const key = 'exp_' + crypto.randomBytes(16).toString('hex');
+
+      // Quotas
+      const quotas = {
+        free: { monthlyLimit: 100, dailyLimit: 10, rateLimitPerMinute: 10 },
+        basic: { monthlyLimit: 10000, dailyLimit: 500, rateLimitPerMinute: 30 },
+        pro: { monthlyLimit: 100000, dailyLimit: 5000, rateLimitPerMinute: 60 },
+        enterprise: { monthlyLimit: 1000000, dailyLimit: 50000, rateLimitPerMinute: 200 }
+      };
+      const quota = quotas[plan] || quotas.free;
+
+      // Dates
+      const now = new Date();
+      const trialEndsAt = trialDays > 0 ? new Date(now.getTime() + trialDays * 24 * 60 * 60 * 1000) : null;
+
+      // Create
+      const apiKeyDoc = new ApiKey({
+        key,
+        name,
+        email,
+        plan,
+        status: 'active',
+        monthlyLimit: quota.monthlyLimit,
+        dailyLimit: quota.dailyLimit,
+        rateLimitPerMinute: quota.rateLimitPerMinute,
+        usageCurrentMonth: 0,
+        usageToday: 0,
+        usageResetDate: now,
+        trialEndsAt,
+        expiresAt: null
+      });
+
+      await apiKeyDoc.save();
+
+      return res.status(201).json({
+        success: true,
+        message: 'API key created successfully',
+        data: {
+          key,
+          email,
+          name,
+          plan,
+          quotas: {
+            monthly: quota.monthlyLimit,
+            daily: quota.dailyLimit,
+            rateLimit: quota.rateLimitPerMinute + '/min'
+          },
+          trialEndsAt: trialEndsAt ? trialEndsAt.toISOString() : null,
+          createdAt: apiKeyDoc.createdAt
+        }
+      });
+    } catch (error) {
+      console.error('Admin API error:', error);
+      return res.status(500).json({
+        success: false,
+        error: 'InternalServerError',
+        message: 'Failed to create API key'
+      });
+    }
+  }
+);
+
+/**
+ * GET /admin/apikeys - List API keys (admin only)
+ */
+router.get('/apikeys', adminAuth, async (req, res) => {
+  try {
+    const { page = 1, limit = 20, plan, status } = req.query;
+
+    const filters = {};
+    if (plan) filters.plan = plan;
+    if (status) filters.status = status;
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    const [keys, total] = await Promise.all([
+      ApiKey.find(filters)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(parseInt(limit))
+        .select('-key'), // Never return full key in list
+      ApiKey.countDocuments(filters)
+    ]);
+
+    res.json({
+      success: true,
+      data: keys,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        pages: Math.ceil(total / parseInt(limit))
+      }
+    });
+  } catch (error) {
+    console.error('Admin API error:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'InternalServerError'
+    });
+  }
+});
+
+/**
+ * GET /admin/apikeys/:key - Get API key details
+ */
+router.get('/apikeys/:key', adminAuth, async (req, res) => {
+  try {
+    const keyDoc = await ApiKey.findOne({ key: req.params.key });
+    if (!keyDoc) {
+      return res.status(404).json({
+        success: false,
+        error: 'NotFound',
+        message: 'API key not found'
+      });
+    }
+    res.json({
+      success: true,
+      data: keyDoc
+    });
+  } catch (error) {
+    console.error('Admin API error:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'InternalServerError'
+    });
+  }
+});
+
+/**
+ * PUT /admin/apikeys/:key/status - Update API key status
+ */
+router.put('/apikeys/:key/status', adminAuth, async (req, res) => {
+  try {
+    const { status } = req.body;
+    if (!['active', 'suspended', 'expired', 'cancelled'].includes(status)) {
+      return res.status(400).json({
+        success: false,
+        error: 'ValidationError',
+        message: 'Invalid status. Must be: active, suspended, expired, cancelled'
+      });
+    }
+
+    const keyDoc = await ApiKey.findOneAndUpdate(
+      { key: req.params.key },
+      { status },
+      { new: true, select: '-key' }
+    );
+
+    if (!keyDoc) {
+      return res.status(404).json({
+        success: false,
+        error: 'NotFound',
+        message: 'API key not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'API key status updated',
+      data: keyDoc
+    });
+  } catch (error) {
+    console.error('Admin API error:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'InternalServerError'
+    });
+  }
+});
+
+/**
+ * DELETE /admin/apikeys/:key - Revoke API key
+ */
+router.delete('/apikeys/:key', adminAuth, async (req, res) => {
+  try {
+    const keyDoc = await ApiKey.findOneAndDelete({ key: req.params.key });
+    if (!keyDoc) {
+      return res.status(404).json({
+        success: false,
+        error: 'NotFound',
+        message: 'API key not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'API key revoked successfully'
+    });
+  } catch (error) {
+    console.error('Admin API error:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'InternalServerError'
+    });
+  }
+});
+
+/**
+ * GET /admin/stats - Usage statistics
+ */
+router.get('/stats/usage', adminAuth, async (req, res) => {
+  try {
+    const { month } = req.query;
+    const yearMonth = month || new Date().toISOString().slice(0, 7);
+
+    // Total API calls this month
+    const totalCalls = await Usage.countDocuments({ yearMonth });
+
+    // Top API keys by usage
+    const topKeys = await ApiKey.aggregate([
+      { $sort: { usageCurrentMonth: -1 } },
+      { $limit: 10 },
+      {
+        $project: {
+          _id: 0,
+          email: 1,
+          name: 1,
+          plan: 1,
+          usageCurrentMonth: 1,
+          monthlyLimit: 1,
+          percentUsed: { $multiply: [{ $divide: ['$usageCurrentMonth', '$monthlyLimit'] }, 100] }
+        }
+      }
+    ]);
+
+    // Calls by endpoint
+    const callsByEndpoint = await Usage.aggregate([
+      { $match: { yearMonth } },
+      { $group: { _id: '$endpoint', calls: { $sum: 1 } } },
+      { $sort: { calls: -1 } },
+      { $limit: 10 }
+    ]);
+
+    // Status code distribution
+    const statusCodes = await Usage.aggregate([
+      { $match: { yearMonth } },
+      { $group: { _id: '$statusCode', count: { $sum: 1 } } },
+      { $sort: { count: -1 } }
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        period: yearMonth,
+        totalCalls,
+        topKeys,
+        callsByEndpoint,
+        statusCodes
+      }
+    });
+  } catch (error) {
+    console.error('Admin API error:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'InternalServerError'
+    });
+  }
+});
+
+module.exports = router;

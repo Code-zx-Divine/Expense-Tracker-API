@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "test": "echo \"No test suite configured yet\" && exit 0"
+    "test": "echo \"No test suite configured yet\" && exit 0",
+    "create-key": "node src/scripts/create-api-key.js"
   },
   "keywords": [
     "expense-tracker",

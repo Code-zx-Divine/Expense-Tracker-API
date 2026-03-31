@@ -11,9 +11,15 @@ const transactionRoutes = require('./routes/transactionRoutes');
 const categoryRoutes = require('./routes/categoryRoutes');
 const analyticsRoutes = require('./routes/analyticsRoutes');
 const healthRoutes = require('./routes/healthRoutes');
+const adminRoutes = require('./routes/adminRoutes');
 
 const logger = require('./config/logger');
 const CONSTANTS = require('./utils/constants');
+
+// RapidAPI Authentication
+const rapidApiAuth = process.env.RAPIDAPI_ENABLED === 'true'
+  ? require('./middleware/rapidapiAuth')
+  : null;
 
 // Ensure logs directory exists (for winston file transport)
 const fs = require('fs');
@@ -80,13 +86,20 @@ const createApp = () => {
     });
   });
 
-  // Health check
+  // Health check (always public)
   app.use('/health', healthRoutes);
 
-  // API Routes
-  app.use('/api/transactions', transactionRoutes);
-  app.use('/api/categories', categoryRoutes);
-  app.use('/api/analytics', analyticsRoutes);
+  // Admin routes (protected by admin secret) - security through obscurity, add IP whitelist in production
+  if (process.env.ADMIN_SECRET) {
+    app.use('/admin', adminRoutes);
+  }
+
+  // API Routes - Apply RapidAPI authentication if enabled
+  const apiMiddleware = rapidApiAuth ? [rapidApiAuth] : [];
+
+  app.use('/api/transactions', ...apiMiddleware, transactionRoutes);
+  app.use('/api/categories', ...apiMiddleware, categoryRoutes);
+  app.use('/api/analytics', ...apiMiddleware, analyticsRoutes);
 
   // 404 handler
   app.use('*', (req, res) => {
