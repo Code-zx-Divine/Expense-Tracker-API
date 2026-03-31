@@ -1,30 +1,29 @@
-  services:
-    - type: web
-      name: expense-tracker-api
-      env: node
-      plan: free
-      buildCommand: npm install
-      startCommand: npm start
-      healthCheckPath: /health
-      envVars:
-        - key: NODE_ENV
-          value: production
-        - key: PORT
-          value: 3000
-        - key: MONGO_URI
-          value: mongodb+srv://prashantshinde2754_db_user:Code0000_zx@cluster0.veilklf.mongodb.net/expenseDB?retryWrites
-  =true&w=majority
-        - key: CORS_ORIGIN
-          value: https://expense-tracker-api.onrender.com
-        - key: RAPIDAPI_ENABLED
-          value: "true"
-        - key: ADMIN_SECRET
-          generateValue: true
-        - key: RATE_LIMIT_WINDOW_MS
-          value: 900000
-        - key: RATE_LIMIT_MAX_REQUESTS
-          value: 100
-        - key: REQUEST_TIMEOUT
-          value: 30000
-        - key: LOG_LEVEL
-          value: info
+services:
+  - type: web
+    name: expense-tracker-api
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      - key: MONGO_URI
+        value: mongodb+srv://prashantshinde2754_db_user:Code0000_zx@cluster0.veilklf.mongodb.net/expenseDB?retryWrites=true&w=majority
+      - key: CORS_ORIGIN
+        value: https://expense-tracker-api.onrender.com
+      - key: RAPIDAPI_ENABLED
+        value: "true"
+      - key: ADMIN_SECRET
+        generateValue: true
+      - key: RATE_LIMIT_WINDOW_MS
+        value: 900000
+      - key: RATE_LIMIT_MAX_REQUESTS
+        value: 100
+      - key: REQUEST_TIMEOUT
+        value: 30000
+      - key: LOG_LEVEL
+        value: info
