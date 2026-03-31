@@ -65,8 +65,9 @@ const connectDB = async () => {
   const attemptConnection = async () => {
     try {
       console.log('🔗 Connecting to MongoDB...');
+      console.log(`📡 URI: ${cleanMongoURI.substring(0, 30)}...`);
 
-      await mongoose.connect(CLEAN_MONGO_URI, mongooseOptions);
+      await mongoose.connect(cleanMongoURI, mongooseOptions);
 
       console.log('✅ MongoDB Connected Successfully');
       console.log(`📊 Database: ${mongoose.connection.name || 'expense-tracker'}`);
@@ -88,6 +89,17 @@ const connectDB = async () => {
       return true;
     } catch (error) {
       console.error(`❌ MongoDB Connection Failed (Attempt ${retryCount + 1}/${maxRetries}):`, error.message);
+
+      // Provide specific guidance for common connection errors
+      if (error.code === 'ENOTFOUND' || error.message.includes('ENOTFOUND') || error.message.includes('ECONNREFUSED')) {
+        console.error('\\n🔧 Troubleshooting Tips:');
+        console.error('   1. Check your internet connection');
+        console.error('   2. Verify MONGO_URI is correct');
+        console.error('   3. Ensure MongoDB Atlas cluster is active (not paused)');
+        console.error('   4. Check Atlas IP whitelist - add your current IP');
+        console.error('   5. Verify database user credentials are correct');
+        console.error('   6. For local development, ensure port 27017 is accessible\\n');
+      }
 
       retryCount++;
 

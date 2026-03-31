@@ -5,6 +5,7 @@ const compression = require('compression');
 const rateLimiter = require('./middleware/rateLimiter');
 const errorHandler = require('./middleware/errorHandler');
 const asyncHandler = require('./middleware/asyncHandler');
+const timeout = require('./middleware/timeout');
 
 const transactionRoutes = require('./routes/transactionRoutes');
 const categoryRoutes = require('./routes/categoryRoutes');
@@ -45,6 +46,10 @@ const createApp = () => {
 
   // Compression
   app.use(compression());
+
+  // Request timeout
+  const requestTimeout = parseInt(process.env.REQUEST_TIMEOUT) || 30000;
+  app.use(timeout(requestTimeout));
 
   // Rate limiting
   app.use('/api/', rateLimiter);

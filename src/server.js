@@ -52,6 +52,39 @@ const startServer = async () => {
       process.exit(1);
     });
 
+    // 7. Graceful shutdown for both HTTP server and MongoDB
+    const gracefulShutdown = async (signal) => {
+      console.log(`${signal} received. Starting graceful shutdown...`);
+
+      try {
+        // Close HTTP server
+        server.close(async () => {
+          console.log('📦 HTTP server closed');
+          try {
+            // Close MongoDB connection
+            await mongoose.connection.close();
+            console.log('📦 MongoDB connection closed');
+            process.exit(0);
+          } catch (error) {
+            console.error('❌ Error closing MongoDB:', error);
+            process.exit(1);
+          }
+        });
+
+        // Force shutdown after 10 seconds if server doesn't close
+        setTimeout(() => {
+          console.error('❌ Forcing shutdown after timeout');
+          process.exit(1);
+        }, 10000).unref();
+      } catch (error) {
+        console.error('❌ Error during shutdown:', error);
+        process.exit(1);
+      }
+    };
+
+    process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+    process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+
   } catch (error) {
     console.error('❌ Failed to start server:', error);
     process.exit(1);
