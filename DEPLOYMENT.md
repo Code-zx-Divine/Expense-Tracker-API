@@ -27,7 +27,7 @@
 6. Copy the connection string and **replace password** with: `Code0000zx`
 7. Full connection string should be:
    ```
-   mongodb+srv://prashantshinde2754_db_user:Code0000zx@cluster0.veilklf.mongodb.net/expense-tracker?retryWrites=true&w=majority
+   mongodb+srv://prashantshinde2754_db_user:Code0000_zx@apitest.93gflwg.mongodb.net/expense-tracker?retryWrites=true&w=majority
    ```
 
 ### 2. GitHub Repository (Already Done ✓)
@@ -57,7 +57,7 @@ In the Render dashboard, under **"Environment"**, add these variables:
 | Key | Value |
 |-----|-------|
 | `NODE_ENV` | `production` |
-| `MONGO_URI` | `mongodb+srv://prashantshinde2754_db_user:Code0000zx@cluster0.veilklf.mongodb.net/expense-tracker?retryWrites=true&w=majority` |
+| `MONGO_URI` | `mongodb+srv://prashantshinde2754_db_user:Code0000_zx@apitest.93gflwg.mongodb.net/expense-tracker?retryWrites=true&w=majority` |
 | `PORT` | `10000` (Render uses this automatically) |
 | `CORS_ORIGIN` | `*` (or your frontend URL) |
 | `LOG_LEVEL` | `info` |

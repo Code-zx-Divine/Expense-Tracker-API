@@ -33,14 +33,14 @@ A production-ready REST API for tracking expenses and income with MongoDB Atlas.
 
 5. Copy the connection string. It will look like:
    ```
-   mongodb+srv://<username>:<password>@cluster0.veilklf.mongodb.net/?retryWrites=true&w=majority
+   mongodb+srv://<username>:<password>@<your-cluster>.mongodb.net/?retryWrites=true&w=majority
    ```
 
 6. Replace `<username>` and `<password>` with your database user credentials
 
 7. Add database name to the connection string:
    ```
-   mongodb+srv://<username>:<password>@cluster0.veilklf.mongodb.net/expense-tracker?retryWrites=true&w=majority
+   mongodb+srv://<username>:<password>@<your-cluster>.mongodb.net/expense-tracker?retryWrites=true&w=majority
    ```
 
 ## Local Setup
@@ -57,7 +57,7 @@ A production-ready REST API for tracking expenses and income with MongoDB Atlas.
 
 3. Edit `.env` and set your `MONGO_URI` with the Atlas connection string:
    ```env
-   MONGO_URI=mongodb+srv://username:password@cluster0.veilklf.mongodb.net/expense-tracker?retryWrites=true&w=majority
+   MONGO_URI=mongodb+srv://username:password@<your-cluster>.mongodb.net/expense-tracker?retryWrites=true&w=majority
    PORT=3000
    NODE_ENV=development
    ```

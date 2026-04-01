@@ -1,7 +1,7 @@
 const { MongoClient, ServerApiVersion } = require('mongodb');
 
 // Your MongoDB Atlas connection string
-const uri = "mongodb+srv://prashantshinde2754_db_user:Code0000_zx@cluster0.veilklf.mongodb.net/expense-tracker?retryWrites=true&w=majority";
+const uri = "mongodb+srv://prashantshinde2754_db_user:Code0000_zx@apitest.93gflwg.mongodb.net/expense-tracker?retryWrites=true&w=majority";
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
 const client = new MongoClient(uri, {

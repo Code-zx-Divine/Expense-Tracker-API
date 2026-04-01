@@ -12,7 +12,7 @@ services:
       - key: PORT
         value: 3000
       - key: MONGO_URI
-        value: mongodb+srv://prashantshinde2754_db_user:Code0000_zx@cluster0.veilklf.mongodb.net/expenseDB?retryWrites=true&w=majority
+        value: mongodb+srv://prashantshinde2754_db_user:Code0000_zx@apitest.93gflwg.mongodb.net/expense-tracker?retryWrites=true&w=majority
       - key: CORS_ORIGIN
         value: https://expense-tracker-api.onrender.com
       - key: RAPIDAPI_ENABLED
