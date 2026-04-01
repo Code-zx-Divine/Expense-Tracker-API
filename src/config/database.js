@@ -8,45 +8,10 @@ const mongoose = require('mongoose');
 // Get MongoDB URI from environment
 const MONGO_URI = process.env.MONGO_URI;
 
-// Validation
-if (!MONGO_URI) {
-  console.error('❌ ERROR: MONGO_URI environment variable is not set');
-  console.error('💡 Please set MONGO_URI in your Render environment variables');
-  console.error('📝 Example: mongodb+srv://username:password@cluster.mongodb.net/dbname?retryWrites=true&w=majority');
-  process.exit(1);
-}
-
-// Sanitize: remove leading/trailing whitespace and quotes
-const cleanMongoURI = MONGO_URI.trim().replace(/^["']|["']$/g, '');
-
-// Validate URI format
-if (!cleanMongoURI.startsWith('mongodb://') && !cleanMongoURI.startsWith('mongodb+srv://')) {
-  console.error('❌ ERROR: Invalid MONGO_URI format');
-  console.error('📝 Must start with mongodb:// or mongodb+srv://');
-  console.error('💡 Current value:', cleanMongoURI.substring(0, 50) + '...');
-  process.exit(1);
-}
-
-// Check for common issues
-if (cleanMongoURI.includes('retryWrites') && !cleanMongoURI.includes('retryWrites=')) {
-  console.error('❌ ERROR: MONGO_URI has malformed retryWrites parameter');
-  console.error('📝 Correct format: ?retryWrites=true&w=majority');
-  console.error('💡 Current value:', cleanMongoURI);
-  process.exit(1);
-}
-
-// If using SRV, ensure database name is included
-// mongodb+srv://user:pass@cluster/dbname?params
-// Split by '/' → ['mongodb+srv:', '', 'user:pass@cluster', 'dbname?params']
-const pathParts = cleanMongoURI.split('/');
-// Database name should be in pathParts[3] (index 3)
-const dbPart = pathParts[3] || '';
-
-if (cleanMongoURI.startsWith('mongodb+srv://') && (!dbPart || dbPart.includes('@') || dbPart.startsWith('?'))) {
-  console.error('❌ ERROR: MONGO_URI missing database name');
-  console.error('📝 Format: mongodb+srv://user:pass@cluster/dbname?retryWrites=true&w=majority');
-  console.error('💡 Current value:', cleanMongoURI);
-  process.exit(1);
+// Clean MongoDB URI (if exists)
+let cleanMongoURI = '';
+if (MONGO_URI) {
+  cleanMongoURI = MONGO_URI.trim().replace(/^["']|["']$/g, '');
 }
 
 // Connection options
@@ -57,8 +22,46 @@ const mongooseOptions = {
 
 /**
  * Connect to MongoDB with retry logic
+ * NOTE: This function will NOT crash the app if connection fails
  */
 const connectDB = async () => {
+  // If no MONGO_URI, skip connection entirely
+  if (!cleanMongoURI) {
+    console.warn('⚠️  Skipping MongoDB connection: MONGO_URI not set');
+    console.warn('⏳ Server will start without database connectivity');
+    return false;
+  }
+
+  // Validate URI format
+  if (!cleanMongoURI.startsWith('mongodb://') && !cleanMongoURI.startsWith('mongodb+srv://')) {
+    console.warn('⚠️  Skipping MongoDB connection: Invalid MONGO_URI format');
+    console.warn('📝 Must start with mongodb:// or mongodb+srv://');
+    console.warn('💡 Current value:', cleanMongoURI.substring(0, 50) + '...');
+    console.warn('⏳ Server will start without database connectivity');
+    return false;
+  }
+
+  // Check for common issues
+  if (cleanMongoURI.includes('retryWrites') && !cleanMongoURI.includes('retryWrites=')) {
+    console.warn('⚠️  Skipping MongoDB connection: malformed retryWrites parameter');
+    console.warn('📝 Correct format: ?retryWrites=true&w=majority');
+    console.warn('💡 Current value:', cleanMongoURI);
+    console.warn('⏳ Server will start without database connectivity');
+    return false;
+  }
+
+  // If using SRV, ensure database name is included
+  const pathParts = cleanMongoURI.split('/');
+  const dbPart = pathParts[3] || '';
+
+  if (cleanMongoURI.startsWith('mongodb+srv://') && (!dbPart || dbPart.includes('@') || dbPart.startsWith('?'))) {
+    console.warn('⚠️  Skipping MongoDB connection: missing database name');
+    console.warn('📝 Format: mongodb+srv://user:pass@cluster/dbname?retryWrites=true&w=majority');
+    console.warn('💡 Current value:', cleanMongoURI);
+    console.warn('⏳ Server will start without database connectivity');
+    return false;
+  }
+
   const maxRetries = 3;
   let retryCount = 0;
 
@@ -110,26 +113,30 @@ const connectDB = async () => {
         return attemptConnection();
       } else {
         console.error('❌ Max retries reached. Could not connect to MongoDB.');
+        console.error('💡 Server will continue running without database connectivity');
         console.error('💡 Check your MONGO_URI and network connectivity');
-        process.exit(1);
+        return false; // Return false instead of exiting
       }
     }
   };
 
-  await attemptConnection();
+  return await attemptConnection();
 };
 
-// Graceful shutdown
+// Graceful shutdown - keep this as it only runs during shutdown
 const gracefulShutdown = async (signal) => {
   console.log(`${signal} received. Closing MongoDB connection...`);
 
   try {
-    await mongoose.connection.close();
-    console.log('📦 MongoDB connection closed');
+    if (mongoose.connection.readyState === 1) {
+      await mongoose.connection.close();
+      console.log('📦 MongoDB connection closed');
+    }
     process.exit(0);
   } catch (error) {
     console.error('❌ Error closing MongoDB:', error);
-    process.exit(1);
+    // Even if close fails, exit cleanly (no crash)
+    process.exit(0);
   }
 };
 
@@ -137,16 +144,17 @@ const gracefulShutdown = async (signal) => {
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 
-// Handle unhandled rejections
+// Handle unhandled rejections - log but don't exit immediately
 process.on('unhandledRejection', (err, promise) => {
   console.error('❌ Unhandled Promise Rejection:', err);
-  process.exit(1);
+  // Don't exit - let the process continue
 });
 
-// Handle uncaught exceptions
+// Handle uncaught exceptions - these are serious but we still want to log
 process.on('uncaughtException', (err) => {
   console.error('❌ Uncaught Exception:', err);
-  process.exit(1);
+  // For production stability, don't exit immediately
+  // Log and let the process continue or let Render restart if needed
 });
 
 module.exports = { connectDB };

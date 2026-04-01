@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "render": {
+      "command": "C:/Users/admin/Desktop/APIs/render-mcp-server/bin/render-mcp-server.exe"
+    }
+  }
+}
