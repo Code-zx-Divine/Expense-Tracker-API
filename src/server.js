@@ -7,6 +7,7 @@ require('dotenv').config();
 
 const mongoose = require('mongoose');
 const { connectDB } = require('./config/database');
+const { validateEnv } = require('./config/validation');
 const createApp = require('./app');
 const Category = require('./models/Category');
 
@@ -14,6 +15,14 @@ const Category = require('./models/Category');
 const startServer = async () => {
   console.log('🚀 Starting Expense Tracker API...');
   console.log(`📦 Environment: ${process.env.NODE_ENV || 'development'}`);
+
+  // Validate required environment variables
+  try {
+    validateEnv();
+  } catch (error) {
+    console.error('❌ Failed to start server due to configuration error');
+    process.exit(1);
+  }
 
   let dbConnected = false;
   let app;

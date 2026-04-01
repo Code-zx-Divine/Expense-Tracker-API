@@ -16,6 +16,11 @@ if (MONGO_URI) {
 
 // Connection options
 const mongooseOptions = {
+  // Timeouts to prevent hanging indefinitely
+  serverSelectionTimeoutMS: 5000,  // Try to find server for max 5 seconds
+  connectTimeoutMS: 5000,          // TCP connection timeout 5 seconds
+  socketTimeoutMS: 30000,          // Socket operations timeout 30 seconds
+
   // For MongoDB Atlas with SRV records
   // Use consistent options for both local and Atlas
 };

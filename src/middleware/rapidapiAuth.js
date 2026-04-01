@@ -50,7 +50,7 @@ const rapidApiAuth = async (req, res, next) => {
         success: false,
         error: 'Forbidden',
         message: 'Subscription expired. Renew to continue.',
-        upgradeUrl: 'https://rapidapi.com/yourusername/expense-tracker-api'
+        upgradeUrl: process.env.RAPIDAPI_UPGRADE_URL || 'https://rapidapi.com/yourusername/expense-tracker-api'
       });
     }
 
@@ -58,13 +58,22 @@ const rapidApiAuth = async (req, res, next) => {
     const yearMonth = new Date().toISOString().slice(0, 7); // "2026-03"
     const today = new Date().getDate();
 
-    // Reset counters if new month/day (handled by scheduled job ideally, but check here)
+    // Reset counters if new day/month (check on every request)
     const now = new Date();
     const lastReset = keyDoc.usageResetDate;
+
+    // Reset daily counter if it's a new day
+    if (!lastReset || lastReset.getDate() !== now.getDate()) {
+      keyDoc.usageToday = 0;
+    }
+
+    // Reset monthly counter if it's a new month/year
     if (!lastReset || lastReset.getMonth() !== now.getMonth() || lastReset.getFullYear() !== now.getFullYear()) {
       keyDoc.usageCurrentMonth = 0;
-      keyDoc.usageResetDate = now;
     }
+
+    // Always update the reset date to current time
+    keyDoc.usageResetDate = now;
 
     if (keyDoc.usageCurrentMonth >= keyDoc.monthlyLimit) {
       logger.warn('Monthly quota exceeded', { apiKey: apiKey.substring(0, 8), email: keyDoc.email });
@@ -73,7 +82,7 @@ const rapidApiAuth = async (req, res, next) => {
         error: 'QuotaExceeded',
         message: 'Monthly quota exceeded. Upgrade your plan.',
         quota: keyDoc.quotaInfo,
-        upgradeUrl: 'https://rapidapi.com/yourusername/expense-tracker-api'
+        upgradeUrl: process.env.RAPIDAPI_UPGRADE_URL || 'https://rapidapi.com/yourusername/expense-tracker-api'
       });
     }
 

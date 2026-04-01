@@ -4,8 +4,11 @@ const ApiKey = require('../models/ApiKey');
 const { body, validationResult } = require('express-validator');
 const CONSTANTS = require('../utils/constants');
 
-// Admin secret - CHANGE THIS IN PRODUCTION!
-const ADMIN_SECRET = process.env.ADMIN_SECRET || 'change-this-secret-in-production';
+// Admin secret - MUST be set via environment variable
+const ADMIN_SECRET = process.env.ADMIN_SECRET;
+if (!ADMIN_SECRET) {
+  throw new Error('ADMIN_SECRET environment variable is required for admin routes');
+}
 
 // Middleware to protect admin routes
 const adminAuth = (req, res, next) => {

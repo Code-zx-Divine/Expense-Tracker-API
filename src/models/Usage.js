@@ -74,4 +74,8 @@ usageSchema.index({ apiKey: 1, createdAt: -1 });
 usageSchema.index({ apiKey: 1, yearMonth: 1 });
 usageSchema.index({ apiKey: 1, day: 1 });
 
+// TTL index: Auto-delete usage records after 90 days (keep DB size manageable)
+// Note: Requires the field to be indexed and have a date value
+usageSchema.index({ createdAt: 1 }, { expireAfterSeconds: 60 * 60 * 24 * 90 });
+
 module.exports = mongoose.model('Usage', usageSchema);

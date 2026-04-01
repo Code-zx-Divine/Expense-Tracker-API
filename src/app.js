@@ -1,4 +1,5 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const helmet = require('helmet');
 const cors = require('cors');
 const compression = require('compression');
@@ -88,6 +89,70 @@ const createApp = () => {
 
   // Health check (always public)
   app.use('/health', healthRoutes);
+
+  // API root - shows available endpoints
+  app.get('/api', (req, res) => {
+    const isDbConnected = mongoose.connection.readyState === 1;
+    const apiInfo = {
+      name: 'Expense Tracker API',
+      version: '1.0.0',
+      status: 'running',
+      endpoints: {
+        transactions: {
+          description: 'Income and expense transactions',
+          routes: {
+            'POST /api/transactions/expense': 'Add an expense',
+            'POST /api/transactions/income': 'Add income',
+            'GET /api/transactions': 'List all transactions (with filters)',
+            'GET /api/transactions/:id': 'Get single transaction',
+            'PUT /api/transactions/:id': 'Update transaction',
+            'DELETE /api/transactions/:id': 'Soft delete transaction'
+          }
+        },
+        categories: {
+          description: 'Transaction categories',
+          routes: {
+            'GET /api/categories': 'List all categories',
+            'GET /api/categories/:id': 'Get single category',
+            'POST /api/categories': 'Create category (admin)',
+            'PUT /api/categories/:id': 'Update category (admin)',
+            'DELETE /api/categories/:id': 'Delete category (admin)'
+          }
+        },
+        analytics: {
+          description: 'Financial analytics and insights',
+          routes: {
+            'GET /api/analytics/categories': 'Category-wise spending',
+            'GET /api/analytics/summary': 'Financial summary',
+            'GET /api/analytics/trends': 'Monthly trends',
+            'GET /api/analytics/insights': 'AI-powered insights'
+          }
+        }
+      },
+      authentication: process.env.RAPIDAPI_ENABLED === 'true' ? 'RapidAPI (X-RapidAPI-Key header)' : 'None (public)',
+      database: isDbConnected ? 'MongoDB ✅' : 'MongoDB ⚠️ (disconnected)'
+    };
+
+    // Include admin endpoints if ADMIN_SECRET is set
+    if (process.env.ADMIN_SECRET) {
+      apiInfo.endpoints.admin = {
+        description: 'Admin APIs (require X-Admin-Secret header)',
+        routes: {
+          'POST /admin/apikeys': 'Create API key',
+          'GET /admin/apikeys': 'List API keys',
+          'GET /admin/apikeys/:key': 'Get API key details',
+          'PUT /admin/apikeys/:key/status': 'Update API key status',
+          'DELETE /admin/apikeys/:key': 'Revoke API key',
+          'GET /admin/stats/usage': 'Usage statistics'
+        }
+      };
+    }
+
+    return res.json({
+      success: true,
+      ...apiInfo
+    });
+  });
 
   // Admin routes (protected by admin secret) - security through obscurity, add IP whitelist in production
   if (process.env.ADMIN_SECRET) {
