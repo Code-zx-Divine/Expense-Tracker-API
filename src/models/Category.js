@@ -7,7 +7,6 @@ const categorySchema = new mongoose.Schema(
       type: String,
       required: [true, 'Category name is required'],
       trim: true,
-      unique: true,
       maxlength: [100, 'Category name cannot exceed 100 characters']
     },
     type: {
@@ -33,6 +32,15 @@ const categorySchema = new mongoose.Schema(
         message: 'Color must be a valid hex color (e.g., #FF5733)'
       }
     },
+    // User reference for multi-tenancy
+    // null = system/category (seeded defaults) available to all users
+    // ObjectId = user-created custom category
+    user: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      index: true,
+      default: null
+    },
     isDeleted: {
       type: Boolean,
       default: false
@@ -50,10 +58,15 @@ const categorySchema = new mongoose.Schema(
 );
 
 // Indexes for better query performance
-// Note: unique: true on name field already creates a unique index
-categorySchema.index({ type: 1 });
+categorySchema.index({ user: 1, name: 1 });          // User-specific category lookup (unique per user)
+categorySchema.index({ user: 1, type: 1 });         // User filter by type
+categorySchema.index({ user: 1, isDeleted: 1 });   // User soft delete queries
+categorySchema.index({ type: 1 });                  // Global type queries (for system categories)
 categorySchema.index({ isDeleted: 1 });
 categorySchema.index({ deletedAt: 1 });
+
+// Ensure unique category names per user (system categories have user=null)
+categorySchema.index({ name: 1, user: 1 }, { unique: true });
 
 // Pre-save middleware to set deletedAt when soft deleting
 categorySchema.pre('save', function (next) {

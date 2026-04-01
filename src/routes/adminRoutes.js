@@ -3,6 +3,7 @@ const router = express.Router();
 const ApiKey = require('../models/ApiKey');
 const { body, validationResult } = require('express-validator');
 const CONSTANTS = require('../utils/constants');
+const logger = require('../config/logger');
 
 // Admin secret - MUST be set via environment variable
 const ADMIN_SECRET = process.env.ADMIN_SECRET;
@@ -24,8 +25,83 @@ const adminAuth = (req, res, next) => {
 };
 
 /**
- * POST /admin/apikeys - Create new API key
- * Headers: X-Admin-Secret: your-secret
+ * @swagger
+ * /admin/apikeys:
+ *   post:
+ *     summary: Create new API key (RapidAPI integration)
+ *     tags: [Admin]
+ *     security:
+ *       - adminAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *               - name
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 example: user@example.com
+ *               name:
+ *                 type: string
+ *                 example: John Doe
+ *               plan:
+ *                 type: string
+ *                 enum: [free, basic, pro, enterprise]
+ *                 default: free
+ *               trialDays:
+ *                 type: integer
+ *                 minimum: 0
+ *                 example: 7
+ *     responses:
+ *       201:
+ *         description: API key created
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     key:
+ *                       type: string
+ *                       description: The API key (only shown once)
+ *                     email:
+ *                       type: string
+ *                     name:
+ *                       type: string
+ *                     plan:
+ *                       type: string
+ *                     quotas:
+ *                       type: object
+ *                       properties:
+ *                         monthly:
+ *                           type: integer
+ *                         daily:
+ *                           type: integer
+ *                         rate:
+ *                           type: string
+ *                     trialEndsAt:
+ *                       type: string
+ *                       format: date-time
+ *                     createdAt:
+ *                       type: string
+ *                       format: date-time
+ *       400:
+ *         $ref: '#/components/responses/ValidationError'
+ *       409:
+ *         description: API key already exists for this email
+ *       401:
+ *         description: Invalid admin secret
  */
 router.post(
   '/apikeys',
@@ -113,7 +189,7 @@ router.post(
         }
       });
     } catch (error) {
-      console.error('Admin API error:', error);
+      logger.error('Admin API error:', { error: error.message, stack: error.stack });
       return res.status(500).json({
         success: false,
         error: 'InternalServerError',
@@ -123,6 +199,95 @@ router.post(
   }
 );
 
+/**
+ * @swagger
+ * /admin/apikeys:
+ *   get:
+ *     summary: List API keys (admin only)
+ *     tags: [Admin]
+ *     security:
+ *       - adminAuth: []
+ *     parameters:
+ *       - name: page
+ *         in: query
+ *         description: Page number
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           default: 1
+ *       - name: limit
+ *         in: query
+ *         description: Items per page
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           default: 20
+ *       - name: plan
+ *         in: query
+ *         description: Filter by plan
+ *         required: false
+ *         schema:
+ *           type: string
+ *           enum: [free, basic, pro, enterprise]
+ *       - name: status
+ *         in: query
+ *         description: Filter by status
+ *         required: false
+ *         schema:
+ *           type: string
+ *           enum: [active, suspended, expired, cancelled]
+ *     responses:
+ *       200:
+ *         description: API keys list
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       _id:
+ *                         type: string
+ *                       email:
+ *                         type: string
+ *                       name:
+ *                         type: string
+ *                       plan:
+ *                         type: string
+ *                       status:
+ *                         type: string
+ *                       usageCurrentMonth:
+ *                         type: integer
+ *                       usageToday:
+ *                         type: integer
+ *                       lastUsedAt:
+ *                         type: string
+ *                         format: date-time
+ *                       createdAt:
+ *                         type: string
+ *                         format: date-time
+ *                 pagination:
+ *                   type: object
+ *                   properties:
+ *                     page:
+ *                       type: integer
+ *                     limit:
+ *                       type: integer
+ *                     total:
+ *                       type: integer
+ *                     pages:
+ *                       type: integer
+ *       401:
+ *         description: Invalid admin secret
+ */
 /**
  * GET /admin/apikeys - List API keys (admin only)
  */
@@ -165,6 +330,38 @@ router.get('/apikeys', adminAuth, async (req, res) => {
 });
 
 /**
+ * @swagger
+ * /admin/apikeys/{key}:
+ *   get:
+ *     summary: Get API key details
+ *     tags: [Admin]
+ *     security:
+ *       - adminAuth: []
+ *     parameters:
+ *       - name: key
+ *         in: path
+ *         required: true
+ *         description: API key
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: API key details
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   $ref: '#/components/schemas/ApiKey'
+ *       404:
+ *         description: API key not found
+ *       401:
+ *         description: Invalid admin secret
+ */
+/**
  * GET /admin/apikeys/:key - Get API key details
  */
 router.get('/apikeys/:key', adminAuth, async (req, res) => {
@@ -190,6 +387,53 @@ router.get('/apikeys/:key', adminAuth, async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /admin/apikeys/{key}/status:
+ *   put:
+ *     summary: Update API key status
+ *     tags: [Admin]
+ *     security:
+ *       - adminAuth: []
+ *     parameters:
+ *       - name: key
+ *         in: path
+ *         required: true
+ *         description: API key
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - status
+ *             properties:
+ *               status:
+ *                 type: string
+ *                 enum: [active, suspended, expired, cancelled]
+ *     responses:
+ *       200:
+ *         description: API key status updated
+ *         content:
+ *           application/json:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   $ref: '#/components/schemas/ApiKey'
+ *       400:
+ *         description: Invalid status
+ *       404:
+ *         description: API key not found
+ *       401:
+ *         description: Invalid admin secret
+ */
 /**
  * PUT /admin/apikeys/:key/status - Update API key status
  */
@@ -233,6 +477,38 @@ router.put('/apikeys/:key/status', adminAuth, async (req, res) => {
 });
 
 /**
+ * @swagger
+ * /admin/apikeys/{key}:
+ *   delete:
+ *     summary: Revoke API key
+ *     tags: [Admin]
+ *     security:
+ *       - adminAuth: []
+ *     parameters:
+ *       - name: key
+ *         in: path
+ *         required: true
+ *         description: API key to revoke
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: API key revoked
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *       404:
+ *         description: API key not found
+ *       401:
+ *         description: Invalid admin secret
+ */
+/**
  * DELETE /admin/apikeys/:key - Revoke API key
  */
 router.delete('/apikeys/:key', adminAuth, async (req, res) => {
@@ -259,6 +535,78 @@ router.delete('/apikeys/:key', adminAuth, async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /admin/stats/usage:
+ *   get:
+ *     summary: Usage statistics
+ *     tags: [Admin]
+ *     security:
+ *       - adminAuth: []
+ *     parameters:
+ *       - name: month
+ *         in: query
+ *         description: Month in YYYY-MM format (default: current month)
+ *         required: false
+ *         schema:
+ *           type: string
+ *           pattern: '^[0-9]{4}-[0-9]{2}$'
+ *     responses:
+ *       200:
+ *         description: Usage statistics
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     period:
+ *                       type: string
+ *                       example: "2024-01"
+ *                     totalCalls:
+ *                       type: integer
+ *                     topKeys:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           email:
+ *                             type: string
+ *                           name:
+ *                             type: string
+ *                           plan:
+ *                             type: string
+ *                           usageCurrentMonth:
+ *                             type: integer
+ *                           monthlyLimit:
+ *                             type: integer
+ *                           percentUsed:
+ *                             type: number
+ *                     callsByEndpoint:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           _id:
+ *                             type: string
+ *                           calls:
+ *                             type: integer
+ *                     statusCodes:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           _id:
+ *                             type: integer
+ *                           count:
+ *                             type: integer
+ *       401:
+ *         description: Invalid admin secret
+ */
 /**
  * GET /admin/stats - Usage statistics
  */

@@ -26,10 +26,17 @@ const transactionSchema = new mongoose.Schema(
       validate: {
         validator: async function (value) {
           const Category = require('./Category');
-          const category = await Category.findById(value);
-          return category && !category.isDeleted;
+          const category = await Category.findOne({
+            _id: value,
+            isDeleted: false,
+            $or: [
+              { user: null }, // System category (available to all)
+              { user: this.user } // User's own category
+            ]
+          });
+          return !!category;
         },
-        message: 'Invalid or inactive category'
+        message: 'Invalid, inactive, or unauthorized category'
       }
     },
     description: {
@@ -45,7 +52,8 @@ const transactionSchema = new mongoose.Schema(
     user: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
-      default: null
+      required: [true, 'User is required'],
+      index: true
     },
     isDeleted: {
       type: Boolean,
@@ -64,12 +72,18 @@ const transactionSchema = new mongoose.Schema(
 );
 
 // Indexes for better query performance
+transactionSchema.index({ user: 1, date: -1 });        // User transactions sorted by date (most common)
+transactionSchema.index({ user: 1, category: 1 });    // User transactions by category
+transactionSchema.index({ user: 1, type: 1, date: -1 }); // User filter by type + date
+transactionSchema.index({ user: 1, isDeleted: 1 });  // User soft delete queries
+transactionSchema.index({ user: 1, createdAt: -1 });  // User recent transactions
+
+// Keep some global indexes for admin queries
 transactionSchema.index({ type: 1, date: -1 });
 transactionSchema.index({ category: 1, date: -1 });
 transactionSchema.index({ date: -1 });
 transactionSchema.index({ type: 1 });
 transactionSchema.index({ isDeleted: 1 });
-transactionSchema.index({ deletedAt: 1 });
 transactionSchema.index({ createdAt: -1 });
 
 // Pre-save middleware to set deletedAt when soft deleting

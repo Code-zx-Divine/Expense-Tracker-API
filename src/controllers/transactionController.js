@@ -7,9 +7,16 @@ const logger = require('../config/logger');
 /**
  * Build query filters from request query parameters
  * Note: isDeleted: false is automatically applied via model pre-hook
+ * Automatically filters by current user (multi-tenancy)
  */
-const buildTransactionFilters = (query) => {
+const buildTransactionFilters = (query, req) => {
   const filters = {};
+
+  // Always filter by authenticated user
+  // req.currentUserId is set by userFilter middleware
+  if (req.currentUserId) {
+    filters.user = req.currentUserId;
+  }
 
   if (query.type) {
     filters.type = query.type;
@@ -53,10 +60,18 @@ const addExpense = async (req, res, next) => {
   try {
     const { amount, category, description, date } = req.body;
 
-    // Verify category exists and is not deleted
-    const categoryDoc = await Category.findOne({ _id: category, isDeleted: false });
+    // Verify category exists, is not deleted, and belongs to user or is system category
+    const categoryDoc = await Category.findOne({
+      _id: category,
+      isDeleted: false,
+      $or: [
+        { user: null }, // System category
+        { user: req.userId } // User's own category
+      ]
+    });
+
     if (!categoryDoc) {
-      return error(res, CONSTANTS.HTTP_STATUS.BAD_REQUEST, 'InvalidCategory', 'Invalid or inactive category');
+      return error(res, CONSTANTS.HTTP_STATUS.BAD_REQUEST, 'InvalidCategory', 'Invalid, inactive, or unauthorized category');
     }
 
     if (!['expense', 'both'].includes(categoryDoc.type)) {
@@ -68,12 +83,13 @@ const addExpense = async (req, res, next) => {
       amount: parseFloat(amount),
       category,
       description: description || '',
-      date: date ? new Date(date) : undefined
+      date: date ? new Date(date) : undefined,
+      user: req.userId // Set the user
     });
 
     await transaction.save();
 
-    logger.info('Expense added successfully', { transactionId: transaction._id, amount });
+    logger.info('Expense added successfully', { transactionId: transaction._id, userId: req.userId, amount });
 
     return success(res, CONSTANTS.HTTP_STATUS.CREATED, 'Expense added successfully', transaction);
   } catch (error) {
@@ -88,10 +104,18 @@ const addIncome = async (req, res, next) => {
   try {
     const { amount, category, description, date } = req.body;
 
-    // Verify category exists and is not deleted
-    const categoryDoc = await Category.findOne({ _id: category, isDeleted: false });
+    // Verify category exists, is not deleted, and belongs to user or is system category
+    const categoryDoc = await Category.findOne({
+      _id: category,
+      isDeleted: false,
+      $or: [
+        { user: null }, // System category
+        { user: req.userId } // User's own category
+      ]
+    });
+
     if (!categoryDoc) {
-      return error(res, CONSTANTS.HTTP_STATUS.BAD_REQUEST, 'InvalidCategory', 'Invalid or inactive category');
+      return error(res, CONSTANTS.HTTP_STATUS.BAD_REQUEST, 'InvalidCategory', 'Invalid, inactive, or unauthorized category');
     }
 
     if (!['income', 'both'].includes(categoryDoc.type)) {
@@ -103,12 +127,13 @@ const addIncome = async (req, res, next) => {
       amount: parseFloat(amount),
       category,
       description: description || '',
-      date: date ? new Date(date) : undefined
+      date: date ? new Date(date) : undefined,
+      user: req.userId // Set the user
     });
 
     await transaction.save();
 
-    logger.info('Income added successfully', { transactionId: transaction._id, amount });
+    logger.info('Income added successfully', { transactionId: transaction._id, userId: req.userId, amount });
 
     return success(res, CONSTANTS.HTTP_STATUS.CREATED, 'Income added successfully', transaction);
   } catch (error) {
@@ -126,7 +151,7 @@ const getTransactions = async (req, res, next) => {
     const skip = (page - 1) * limit;
 
     // Build filters (isDeleted: false added automatically via pre-hook)
-    const filters = buildTransactionFilters(req.query);
+    const filters = buildTransactionFilters(req.query, req); // Pass req to include user filter
 
     // Build sort options
     const sort = buildSortOptions(req.query);
@@ -158,10 +183,13 @@ const getTransactions = async (req, res, next) => {
  */
 const getTransactionById = async (req, res, next) => {
   try {
-    const transaction = await Transaction.findById(req.params.id);
+    const transaction = await Transaction.findOne({
+      _id: req.params.id,
+      user: req.userId // Ensure user owns this transaction
+    });
 
     if (!transaction) {
-      return error(res, CONSTANTS.HTTP_STATUS.NOT_FOUND, 'NotFound', 'Transaction not found or has been deleted');
+      return error(res, CONSTANTS.HTTP_STATUS.NOT_FOUND, 'NotFound', 'Transaction not found or access denied');
     }
 
     return success(res, CONSTANTS.HTTP_STATUS.OK, 'Transaction retrieved successfully', transaction);
@@ -177,17 +205,29 @@ const updateTransaction = async (req, res, next) => {
   try {
     const { amount, category, description, date } = req.body;
 
-    const transaction = await Transaction.findOne({ _id: req.params.id });
+    // Find transaction that belongs to current user
+    const transaction = await Transaction.findOne({
+      _id: req.params.id,
+      user: req.userId
+    });
 
     if (!transaction) {
-      return error(res, CONSTANTS.HTTP_STATUS.NOT_FOUND, 'NotFound', 'Transaction not found or has been deleted');
+      return error(res, CONSTANTS.HTTP_STATUS.NOT_FOUND, 'NotFound', 'Transaction not found or access denied');
     }
 
-    // If category is being updated, verify it's valid and not deleted
+    // If category is being updated, verify it's valid, not deleted, and belongs to user or is system category
     if (category && category !== transaction.category.toString()) {
-      const categoryDoc = await Category.findOne({ _id: category, isDeleted: false });
+      const categoryDoc = await Category.findOne({
+        _id: category,
+        isDeleted: false,
+        $or: [
+          { user: null }, // System category
+          { user: req.userId } // User's own category
+        ]
+      });
+
       if (!categoryDoc) {
-        return error(res, CONSTANTS.HTTP_STATUS.BAD_REQUEST, 'InvalidCategory', 'Invalid or inactive category');
+        return error(res, CONSTANTS.HTTP_STATUS.BAD_REQUEST, 'InvalidCategory', 'Invalid, inactive, or unauthorized category');
       }
 
       if (transaction.type === 'expense' && !['expense', 'both'].includes(categoryDoc.type)) {
@@ -216,7 +256,7 @@ const updateTransaction = async (req, res, next) => {
 
     await transaction.save();
 
-    logger.info('Transaction updated successfully', { transactionId: transaction._id });
+    logger.info('Transaction updated successfully', { transactionId: transaction._id, userId: req.userId });
 
     return success(res, CONSTANTS.HTTP_STATUS.OK, 'Transaction updated successfully', transaction);
   } catch (error) {
@@ -229,17 +269,21 @@ const updateTransaction = async (req, res, next) => {
  */
 const deleteTransaction = async (req, res, next) => {
   try {
-    const transaction = await Transaction.findOne({ _id: req.params.id });
+    // Find transaction that belongs to current user
+    const transaction = await Transaction.findOne({
+      _id: req.params.id,
+      user: req.userId
+    });
 
     if (!transaction) {
-      return error(res, CONSTANTS.HTTP_STATUS.NOT_FOUND, 'NotFound', 'Transaction not found or has been deleted');
+      return error(res, CONSTANTS.HTTP_STATUS.NOT_FOUND, 'NotFound', 'Transaction not found or access denied');
     }
 
     transaction.isDeleted = true;
     transaction.deletedAt = new Date();
     await transaction.save();
 
-    logger.info('Transaction soft deleted', { transactionId: transaction._id });
+    logger.info('Transaction soft deleted', { transactionId: transaction._id, userId: req.userId });
 
     return success(res, CONSTANTS.HTTP_STATUS.OK, 'Transaction deleted successfully');
   } catch (error) {

@@ -5,7 +5,8 @@ const CONSTANTS = require('../utils/constants');
 const logger = require('../config/logger');
 
 /**
- * GET /api/categories - List all categories (non-deleted by default)
+ * GET /api/categories - List all categories
+ * Shows system categories (user=null) + user's own categories
  */
 const getCategories = async (req, res, next) => {
   try {
@@ -14,8 +15,19 @@ const getCategories = async (req, res, next) => {
     const limit = parseInt(req.query.limit) || CONSTANTS.PAGINATION.DEFAULT_LIMIT;
     const skip = (page - 1) * limit;
 
-    // Build filters
+    // Build filters - by default show system categories (user=null) + user's own
     const filters = {};
+
+    // Filter by user: show system categories (user=null) + user's own
+    if (req.userId) {
+      filters.$or = [
+        { user: null }, // System categories
+        { user: req.userId } // User's custom categories
+      ];
+    } else {
+      // If no user (shouldn't happen with auth middleware), only show system categories
+      filters.user = null;
+    }
 
     // By default show only non-deleted, unless explicitly requested
     if (showDeleted === 'true') {
@@ -57,13 +69,22 @@ const getCategories = async (req, res, next) => {
 
 /**
  * GET /api/categories/:id - Get single category
+ * Users can access system categories (user=null) or their own
  */
 const getCategoryById = async (req, res, next) => {
   try {
-    const category = await Category.findById(req.params.id);
+    let query = { _id: req.params.id };
+    if (req.userId) {
+      query.$or = [
+        { user: null }, // System category
+        { user: req.userId } // User's own category
+      ];
+    }
+
+    const category = await Category.findOne(query);
 
     if (!category) {
-      return error(res, CONSTANTS.HTTP_STATUS.NOT_FOUND, 'NotFound', 'Category not found');
+      return error(res, CONSTANTS.HTTP_STATUS.NOT_FOUND, 'NotFound', 'Category not found or access denied');
     }
 
     return success(res, CONSTANTS.HTTP_STATUS.OK, 'Category retrieved successfully', category);
@@ -74,13 +95,22 @@ const getCategoryById = async (req, res, next) => {
 
 /**
  * POST /api/categories - Create new category
+ * Users can create their own custom categories (user-specific)
  */
 const createCategory = async (req, res, next) => {
   try {
     const { name, type, icon, color } = req.body;
 
-    // Check if category name already exists (case-insensitive) among non-deleted
-    const existing = await Category.findOne({ name: { $regex: `^${name}$`, $options: 'i' }, isDeleted: false });
+    // Check if category name already exists for this user or as system category
+    const existing = await Category.findOne({
+      name: { $regex: `^${name}$`, $options: 'i' },
+      isDeleted: false,
+      $or: [
+        { user: null }, // System category with same name
+        { user: req.userId } // User's own existing category
+      ]
+    });
+
     if (existing) {
       return error(res, CONSTANTS.HTTP_STATUS.CONFLICT, 'DuplicateCategory', 'A category with this name already exists');
     }
@@ -89,12 +119,13 @@ const createCategory = async (req, res, next) => {
       name: name.trim(),
       type,
       icon: icon || '',
-      color: color || CONSTANTS.CATEGORY_COLORS.DEFAULT
+      color: color || CONSTANTS.CATEGORY_COLORS.DEFAULT,
+      user: req.userId // Category belongs to the user
     });
 
     await category.save();
 
-    logger.info('Category created successfully', { categoryId: category._id, name });
+    logger.info('Category created successfully', { categoryId: category._id, userId: req.userId, name });
 
     return success(res, CONSTANTS.HTTP_STATUS.CREATED, 'Category created successfully', category);
   } catch (error) {
@@ -109,18 +140,26 @@ const updateCategory = async (req, res, next) => {
   try {
     const { name, type, icon, color } = req.body;
 
-    const category = await Category.findById(req.params.id);
+    // Find category that belongs to current user (system categories user=null are not editable)
+    const category = await Category.findOne({
+      _id: req.params.id,
+      user: req.userId
+    });
 
     if (!category) {
-      return error(res, CONSTANTS.HTTP_STATUS.NOT_FOUND, 'NotFound', 'Category not found');
+      return error(res, CONSTANTS.HTTP_STATUS.NOT_FOUND, 'NotFound', 'Category not found or access denied');
     }
 
-    // If name is being updated, check for duplicates among non-deleted
+    // If name is being updated, check for duplicates among user's categories and system categories
     if (name && name.trim() !== category.name) {
       const existing = await Category.findOne({
         name: { $regex: `^${name.trim()}$`, $options: 'i' },
         _id: { $ne: category._id },
-        isDeleted: false
+        isDeleted: false,
+        $or: [
+          { user: null }, // System category with same name
+          { user: req.userId } // User's own category
+        ]
       });
 
       if (existing) {
@@ -144,7 +183,7 @@ const updateCategory = async (req, res, next) => {
 
     await category.save();
 
-    logger.info('Category updated successfully', { categoryId: category._id });
+    logger.info('Category updated successfully', { categoryId: category._id, userId: req.userId });
 
     return success(res, CONSTANTS.HTTP_STATUS.OK, 'Category updated successfully', category);
   } catch (error) {
@@ -157,10 +196,14 @@ const updateCategory = async (req, res, next) => {
  */
 const deleteCategory = async (req, res, next) => {
   try {
-    const category = await Category.findById(req.params.id);
+    // Find category that belongs to current user (system categories user=null cannot be deleted)
+    const category = await Category.findOne({
+      _id: req.params.id,
+      user: req.userId
+    });
 
     if (!category) {
-      return error(res, CONSTANTS.HTTP_STATUS.NOT_FOUND, 'NotFound', 'Category not found');
+      return error(res, CONSTANTS.HTTP_STATUS.NOT_FOUND, 'NotFound', 'Category not found or access denied');
     }
 
     if (category.isDeleted) {
@@ -186,7 +229,7 @@ const deleteCategory = async (req, res, next) => {
     category.deletedAt = new Date();
     await category.save();
 
-    logger.info('Category soft deleted', { categoryId: category._id, name: category.name });
+    logger.info('Category soft deleted', { categoryId: category._id, name: category.name, userId: req.userId });
 
     return success(res, CONSTANTS.HTTP_STATUS.OK, 'Category deleted successfully');
   } catch (error) {

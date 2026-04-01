@@ -9,11 +9,13 @@ const { error: errorResponse } = require('../utils/responses');
 const errorHandler = () => {
   const handler = (err, req, res, next) => {
     logger.error('Error occurred:', {
+      requestId: req.id,
       message: err.message,
       stack: process.env.NODE_ENV === 'development' ? err.stack : undefined,
       url: req.originalUrl,
       method: req.method,
-      ip: req.ip
+      ip: req.ip,
+      userId: req.userId || null
     });
 
     // Determine status code and error type based on error properties
