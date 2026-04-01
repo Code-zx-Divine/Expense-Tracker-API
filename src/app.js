@@ -277,7 +277,7 @@ const createApp = () => {
   }
 
   // Auth middleware for protected API routes
-  const { auth: authMiddleware, rateLimit: userRateLimit } = require('./middleware/auth');
+  const { required: authMiddleware, rateLimit: userRateLimit } = require('./middleware/auth');
   const { userFilter } = require('./middleware/userFilter');
 
   // API Routes with authentication

@@ -546,7 +546,7 @@ router.delete('/apikeys/:key', adminAuth, async (req, res) => {
  *     parameters:
  *       - name: month
  *         in: query
- *         description: Month in YYYY-MM format (default: current month)
+ *         description: Month in YYYY-MM format (defaults to current month)
  *         required: false
  *         schema:
  *           type: string

@@ -116,7 +116,7 @@ router.get(
  *     parameters:
  *       - name: year
  *         in: query
- *         description: Year (default: current year)
+ *         description: Year (defaults to current year)
  *         required: false
  *         schema:
  *           type: integer
@@ -124,7 +124,7 @@ router.get(
  *           maximum: 2100
  *       - name: months
  *         in: query
- *         description: Number of months to include (default: 12)
+ *         description: Number of months to include (defaults to 12)
  *         required: false
  *         schema:
  *           type: integer
@@ -176,7 +176,7 @@ router.get(
  *     parameters:
  *       - name: month
  *         in: query
- *         description: Month number (1-12, default: current)
+ *         description: Month number (1-12, defaults to current)
  *         required: false
  *         schema:
  *           type: integer
@@ -184,7 +184,7 @@ router.get(
  *           maximum: 12
  *       - name: year
  *         in: query
- *         description: Year (default: current)
+ *         description: Year (defaults to current)
  *         required: false
  *         schema:
  *           type: integer

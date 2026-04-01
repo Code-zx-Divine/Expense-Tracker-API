@@ -2,7 +2,8 @@ const express = require('express');
 const router = express.Router();
 const { body } = require('express-validator');
 const authController = require('../controllers/authController');
-const { asyncHandler } = require('../middleware/asyncHandler');
+const asyncHandler = require('../middleware/asyncHandler');
+const { required: authMiddleware } = require('../middleware/auth');
 
 /**
  * @swagger

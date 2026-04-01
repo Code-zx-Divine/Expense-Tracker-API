@@ -191,8 +191,7 @@ userSchema.methods.incrementRateLimit = function () {
 };
 
 // Indexes for performance
-userSchema.index({ email: 1 });
+// Note: email and apiKey already have index: true in their field definitions
 userSchema.index({ status: 1, createdAt: -1 });
-userSchema.index({ apiKey: 1 });
 
 module.exports = mongoose.model('User', userSchema);
