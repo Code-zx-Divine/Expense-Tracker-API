@@ -1,4 +1,5 @@
 const User = require('../models/User');
+const ApiKey = require('../models/ApiKey');
 const { validationResult } = require('express-validator');
 const crypto = require('crypto');
 
@@ -30,15 +31,40 @@ exports.register = async (req, res, next) => {
       });
     }
 
+    // Generate API key
+    const apiKeyValue = 'exp_' + crypto.randomBytes(16).toString('hex');
+
     // Create user
     const user = new User({
       email,
       password,
       name,
-      apiKey: crypto.randomBytes(16).toString('hex') // Generate API key
+      apiKey: apiKeyValue
     });
 
     await user.save();
+
+    // Also create an ApiKey document for proper quota tracking
+    // This allows the API key to work with the auth middleware
+    try {
+      const apiKeyDoc = new ApiKey({
+        key: apiKeyValue,
+        email: user.email,
+        name: user.name,
+        plan: 'free', // Default plan for registered users
+        status: 'active',
+        monthlyLimit: 100,
+        dailyLimit: 10,
+        rateLimitPerMinute: 10,
+        usageCurrentMonth: 0,
+        usageToday: 0
+      });
+      await apiKeyDoc.save();
+      console.log(`Created ApiKey document for user ${user.email}`);
+    } catch (error) {
+      // Don't fail registration if ApiKey creation fails, but log it
+      console.error('Failed to create ApiKey document:', error.message);
+    }
 
     // Generate JWT token
     const token = user.generateAuthToken();
@@ -144,6 +170,29 @@ exports.login = async (req, res, next) => {
     user.lastLoginAt = new Date();
     user.lastLoginIP = req.ip;
     await user.save({ validateBeforeSave: false });
+
+    // Ensure ApiKey document exists for this user (for auth middleware)
+    if (user.apiKey) {
+      try {
+        let apiKeyDoc = await ApiKey.findOne({ key: user.apiKey });
+        if (!apiKeyDoc) {
+          apiKeyDoc = new ApiKey({
+            key: user.apiKey,
+            email: user.email,
+            name: user.name,
+            plan: 'free',
+            status: 'active',
+            monthlyLimit: 100,
+            dailyLimit: 10,
+            rateLimitPerMinute: 10
+          });
+          await apiKeyDoc.save();
+          console.log(`Created missing ApiKey document for ${user.email} during login`);
+        }
+      } catch (error) {
+        console.error('Failed to ensure ApiKey document exists:', error.message);
+      }
+    }
 
     // Generate JWT token
     const token = user.generateAuthToken();

@@ -171,6 +171,20 @@ router.post(
 
       await apiKeyDoc.save();
 
+      // Sync the User's apiKey field if a user with this email exists
+      try {
+        const User = require('../models/User');
+        const existingUser = await User.findOne({ email });
+        if (existingUser) {
+          existingUser.apiKey = key;
+          await existingUser.save({ validateBeforeSave: false });
+          console.log(`Synced User.apiKey for ${email}`);
+        }
+      } catch (error) {
+        console.error('Failed to sync User.apiKey:', error.message);
+        // Don't fail the request
+      }
+
       return res.status(201).json({
         success: true,
         message: 'API key created successfully',

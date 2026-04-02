@@ -7,7 +7,8 @@
 
 const requiredEnvVars = [
   'MONGO_URI',           // MongoDB connection string
-  'ADMIN_SECRET'         // Admin routes authentication
+  'ADMIN_SECRET',        // Admin routes authentication
+  'JWT_SECRET'           // JWT token signing
 ];
 
 const optionalEnvVarsWithDefaults = [

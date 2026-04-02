@@ -64,9 +64,25 @@ const auth = {
         }
       }
 
-      // 2. If JWT failed or not provided, try API Key authentication (RapidAPI)
+      // 2. If JWT failed or not provided, try API Key authentication (RapidAPI or Bearer)
       if (!user) {
-        const apiKey = req.headers['x-rapidapi-key'] || req.query['rapidapi-key'];
+        // Check for API key in multiple places:
+        // - x-rapidapi-key header (RapidAPI standard)
+        // - x-api-key header (alternative)
+        // - Authorization: Bearer <exp_key> (if token starts with exp_)
+        let apiKey = req.headers['x-rapidapi-key'] || req.headers['x-api-key'] || req.query['rapidapi-key'];
+
+        // Also check Authorization header if it starts with "exp_"
+        if (!apiKey) {
+          const authHeader = req.headers.authorization;
+          if (authHeader && authHeader.startsWith('Bearer ')) {
+            const token = authHeader.substring(7);
+            // If token looks like an API key (starts with exp_), use it
+            if (token.startsWith('exp_')) {
+              apiKey = token;
+            }
+          }
+        }
 
         if (apiKey) {
           apiKeyDoc = await ApiKey.findOne({
@@ -207,7 +223,11 @@ const auth = {
         return res.status(401).json({
           success: false,
           error: 'Unauthorized',
-          message: 'Authentication required. Provide either Authorization: Bearer <token> OR X-RapidAPI-Key header.'
+          message: 'Authentication required. Provide one of:\n' +
+                   '  - Authorization: Bearer <JWT_token>\n' +
+                   '  - Authorization: Bearer <exp_api_key>\n' +
+                   '  - X-RapidAPI-Key: <exp_api_key>\n' +
+                   '  - X-API-Key: <exp_api_key>'
         });
       }
 
