@@ -39,6 +39,13 @@ const auth = {
 
       // 1. Try JWT authentication first
       const authHeader = req.headers.authorization;
+      console.log('[AUTH] Incoming auth headers', {
+        authorization: !!authHeader,
+        xRapidApiKey: !!req.headers['x-rapidapi-key'],
+        xApiKey: !!req.headers['x-api-key'],
+        xForwardedFor: req.headers['x-forwarded-for'] || null,
+        headerKeys: Object.keys(req.headers).filter((k) => /rapidapi|x-api-key|authorization|x-forwarded-for/i.test(k))
+      });
 
       if (authHeader && authHeader.startsWith('Bearer ')) {
         const token = authHeader.substring(7); // Remove "Bearer " prefix
@@ -82,18 +89,26 @@ const auth = {
 
       // 2. If JWT failed or not provided, try API Key authentication (RapidAPI or Bearer)
       if (!user) {
+        // Helper to read headers robustly in both raw and normalized forms.
+        const getHeader = (name) => {
+          if (!name) return undefined;
+          const normalized = name.toLowerCase();
+          return req.headers[normalized] || req.get(name) || req.get(normalized);
+        };
+
         // Check for API key in multiple places:
-        // - x-rapidapi-key header (RapidAPI standard)
-        // - x-api-key header (alternative)
-        // - Authorization: Bearer <key> (supports API key bearer tokens too)
-        let apiKey = req.headers['x-rapidapi-key'] || req.headers['x-api-key'] || req.query['rapidapi-key'];
+        // - X-RapidAPI-Key header (RapidAPI standard)
+        // - X-API-Key header (alternative)
+        // - Authorization: Bearer <key> (API key bearer tokens)
+        // - rapidapi-key query param fallback
+        let apiKey = getHeader('X-RapidAPI-Key') || getHeader('X-API-Key') || req.query['rapidapi-key'] || req.query['x-rapidapi-key'];
 
         if (!apiKey && authHeader && authHeader.startsWith('Bearer ')) {
           apiKey = authHeader.substring(7).trim();
         }
 
         if (apiKey) {
-          apiKey = apiKey.toString();
+          apiKey = apiKey.toString().trim();
         }
 
         console.log('[AUTH] API key check - RAPIDAPI_ENABLED:', RAPIDAPI_ENABLED, 'apiKey present:', !!apiKey, 'apiKey value:', apiKey ? apiKey.substring(0, 8) + '...' : 'none');

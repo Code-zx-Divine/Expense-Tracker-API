@@ -125,7 +125,9 @@ const createApp = () => {
   const app = express();
 
   // Trust proxy for correct IP detection (required for Render deployment)
-  app.set('trust proxy', 1);
+  // Use environment override if provided, otherwise trust the first proxy.
+  const trustProxy = process.env.TRUST_PROXY || '1';
+  app.set('trust proxy', trustProxy);
 
   // 1. Request ID - first middleware for tracing
   const requestId = require('./middleware/requestId');
