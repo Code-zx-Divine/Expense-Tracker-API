@@ -39,13 +39,37 @@ const auth = {
 
       // 1. Try JWT authentication first
       const authHeader = req.headers.authorization;
+      const proxySecretHeader = req.get('X-RapidAPI-Proxy-Secret') || req.headers['x-rapidapi-proxy-secret'];
       console.log('[AUTH] Incoming auth headers', {
         authorization: !!authHeader,
         xRapidApiKey: !!req.headers['x-rapidapi-key'],
         xApiKey: !!req.headers['x-api-key'],
+        xRapidApiProxySecret: !!proxySecretHeader,
         xForwardedFor: req.headers['x-forwarded-for'] || null,
         headerKeys: Object.keys(req.headers).filter((k) => /rapidapi|x-api-key|authorization|x-forwarded-for/i.test(k))
       });
+
+      if (RAPIDAPI_ENABLED && process.env.RAPIDAPI_PROXY_SECRET && proxySecretHeader === process.env.RAPIDAPI_PROXY_SECRET) {
+        console.log('[AUTH] RapidAPI request detected');
+        console.log('[AUTH] Valid RapidAPI proxy secret received');
+
+        user = {
+          _id: RAPIDAPI_USER_ID,
+          email: RAPIDAPI_USER_EMAIL,
+          name: 'RapidAPI User',
+          role: 'subscriber',
+          status: 'active',
+          isRapidAPI: true
+        };
+        authType = 'rapidapi-proxy';
+
+        res.setHeader('X-API-Quota-Monthly', 'unlimited');
+        res.setHeader('X-API-Quota-Daily', 'unlimited');
+        res.setHeader('X-API-Usage-Month', 'N/A');
+        res.setHeader('X-API-Usage-Day', 'N/A');
+
+        return next();
+      }
 
       if (authHeader && authHeader.startsWith('Bearer ')) {
         const token = authHeader.substring(7); // Remove "Bearer " prefix
@@ -116,6 +140,7 @@ const auth = {
         // RAPIDAPI PROXY MODE: If RapidAPI is enabled and any API key is present,
         // accept it without performing MongoDB API key validation.
         if (RAPIDAPI_ENABLED && apiKey) {
+          console.log('[AUTH] RapidAPI request detected');
           console.log('[AUTH] RapidAPI mode enabled - accepting API key without DB validation');
           console.log('[AUTH] API key (masked):', apiKey.substring(0, 8) + '...');
 
