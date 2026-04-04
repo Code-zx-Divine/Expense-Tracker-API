@@ -52,7 +52,9 @@ const transactionSchema = new mongoose.Schema(
     user: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
-      required: [true, 'User is required'],
+      required: function() {
+        return this.user !== null; // Only require user if it's not null (allows RapidAPI)
+      },
       index: true
     },
     isDeleted: {

@@ -66,7 +66,7 @@ const addExpense = async (req, res, next) => {
       isDeleted: false,
       $or: [
         { user: null }, // System category
-        { user: req.userId } // User's own category
+        ...(req.authType === 'rapidapi' ? [] : [{ user: req.userId }]) // Only check user ownership for non-RapidAPI
       ]
     });
 
@@ -84,7 +84,7 @@ const addExpense = async (req, res, next) => {
       category,
       description: description || '',
       date: date ? new Date(date) : undefined,
-      user: req.userId // Set the user
+      user: req.authType === 'rapidapi' ? null : req.userId // Skip user for RapidAPI
     });
 
     await transaction.save();
