@@ -70,6 +70,64 @@ const checkValidation = require('../utils/validators').checkValidation;
 
 /**
  * @swagger
+ * /categories:
+ *   get:
+ *     summary: List all categories
+ *     tags: [Categories]
+ *     security:
+ *       - bearerAuth: []
+ *       - apiKeyAuth: []
+ *     parameters:
+ *       - $ref: '#/components/parameters/pageParam'
+ *       - $ref: '#/components/parameters/limitParam'
+ *       - name: type
+ *         in: query
+ *         description: Filter by category type
+ *         required: false
+ *         schema:
+ *           type: string
+ *           enum: [income, expense, both]
+ *       - name: active
+ *         in: query
+ *         description: Filter by active status (true=non-deleted, false=deleted)
+ *         required: false
+ *         schema:
+ *           type: boolean
+ *     responses:
+ *       200:
+ *         description: Categories retrieved
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Category'
+ *                 pagination:
+ *                   $ref: '#/components/schemas/Pagination'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       429:
+ *         $ref: '#/components/responses/RateLimited'
+ */
+// GET /api/categories - List all categories
+router.get(
+  '/',
+  validateCategoryTypeQuery,
+  validateActiveQuery,
+  validatePagination,
+  checkValidation,
+  asyncHandler(getCategories)
+);
+
+/**
+ * @swagger
  * /categories/{id}:
  *   get:
  *     summary: Get single category by ID
