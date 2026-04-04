@@ -1,0 +1,1 @@
+{"success":true,"message":"API key created successfully","data":{"key":"exp_7d4a6bcbbd007b0a370def08bbea2db2","email":"test@example.com","name":"Test User","plan":"free","quotas":{"monthly":100,"daily":10,"rateLimit":"10/min"},"trialEndsAt":null,"createdAt":"2026-04-03T09:45:09.657Z"}}

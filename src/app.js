@@ -10,6 +10,95 @@ const errorHandler = require('./middleware/errorHandler');
 const asyncHandler = require('./middleware/asyncHandler');
 const timeout = require('./middleware/timeout');
 
+// CORS Configuration helper
+const getCorsOptions = () => {
+  const RAPIDAPI_ENABLED = process.env.RAPIDAPI_ENABLED === 'true';
+  const CORS_ORIGIN = process.env.CORS_ORIGIN || '*';
+  const RENDER_URL = process.env.RENDER_URL || process.env.RENDER_EXTERNAL_URL || '';
+  const NODE_ENV = process.env.NODE_ENV || 'development';
+
+  console.log('[CORS] Configuring CORS:', {
+    RAPIDAPI_ENABLED,
+    NODE_ENV,
+    CORS_ORIGIN,
+    RENDER_URL
+  });
+
+  // If RapidAPI is enabled, allow all origins for proxy compatibility
+  if (RAPIDAPI_ENABLED) {
+    console.log('[CORS] RapidAPI mode: allowing all origins (*)');
+    return {
+      origin: true, // Allow any origin
+      credentials: true,
+      exposedHeaders: ['X-Request-Id', 'X-RateLimit-Limit', 'X-RateLimit-Remaining', 'X-RateLimit-Reset', 'X-API-Usage-Month', 'X-API-Usage-Day', 'X-API-Quota-Monthly', 'X-API-Quota-Daily'],
+      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'X-Admin-Secret', 'X-RapidAPI-Key', 'X-API-Key', 'X-Requested-With'],
+      maxAge: 86400 // 24 hours
+    };
+  }
+
+  // Build allowed origins array
+  const allowedOrigins = [];
+
+  // Add localhost origins
+  allowedOrigins.push('http://localhost:3000');
+  allowedOrigins.push('http://127.0.0.1:3000');
+
+  // Add Render URL if configured (handle both http and https)
+  if (RENDER_URL) {
+    // Remove trailing slash
+    const renderUrlClean = RENDER_URL.replace(/\/$/, '');
+    allowedOrigins.push(renderUrlClean);
+    allowedOrigins.push(renderUrlClean.replace('http://', 'https://'));
+    allowedOrigins.push(renderUrlClean.replace('https://', 'http://'));
+  }
+
+  // Add any additional origins from CORS_ORIGIN env var (comma-separated)
+  if (CORS_ORIGIN && CORS_ORIGIN !== '*') {
+    const origins = CORS_ORIGIN.split(',').map(o => o.trim()).filter(o => o);
+    origins.forEach(origin => {
+      if (!allowedOrigins.includes(origin)) {
+        allowedOrigins.push(origin);
+      }
+    });
+  }
+
+  // Remove duplicates
+  const uniqueOrigins = [...new Set(allowedOrigins)];
+
+  console.log('[CORS] Allowed origins:', uniqueOrigins);
+
+  return {
+    origin: (origin, callback) => {
+      // Allow undefined origin (curl, Postman, mobile apps, etc.)
+      if (!origin) {
+        console.log('[CORS] Request with no Origin header, allowing (likely tool like curl/Postman)');
+        return callback(null, true);
+      }
+
+      // Check if origin is in allowed list
+      if (uniqueOrigins.includes(origin)) {
+        console.log('[CORS] Origin allowed:', origin);
+        return callback(null, true);
+      }
+
+      // Special case: Allow RapidAPI domain if explicitly configured
+      if (RAPIDAPI_ENABLED && (origin.includes('rapidapi.com') || origin.includes('pipedream.com'))) {
+        console.log('[CORS] RapidAPI origin allowed:', origin);
+        return callback(null, true);
+      }
+
+      console.log('[CORS] Origin denied:', origin);
+      callback(new Error('Not allowed by CORS'));
+    },
+    credentials: true,
+    exposedHeaders: ['X-Request-Id', 'X-RateLimit-Limit', 'X-RateLimit-Remaining', 'X-RateLimit-Reset', 'X-API-Usage-Month', 'X-API-Usage-Day', 'X-API-Quota-Monthly', 'X-API-Quota-Daily'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Admin-Secret', 'X-RapidAPI-Key', 'X-API-Key', 'X-Requested-With'],
+    maxAge: 86400 // 24 hours
+  };
+};
+
 const transactionRoutes = require('./routes/transactionRoutes');
 const categoryRoutes = require('./routes/categoryRoutes');
 const analyticsRoutes = require('./routes/analyticsRoutes');
@@ -51,13 +140,8 @@ const createApp = () => {
     } : false // Disable CSP in development for Swagger UI
   }));
 
-  // 3. CORS configuration
-  const corsOrigin = process.env.CORS_ORIGIN || '*';
-  app.use(cors({
-    origin: corsOrigin,
-    credentials: true,
-    exposedHeaders: ['X-Request-Id', 'X-RateLimit-Limit', 'X-RateLimit-Remaining', 'X-RateLimit-Reset', 'X-API-Usage-Month', 'X-API-Usage-Day']
-  }));
+  // 3. CORS configuration (multi-origin support + RapidAPI)
+  app.use(cors(getCorsOptions()));
 
   // 4. Body parsing with limit
   app.use(express.json({ limit: '10mb' }));
@@ -273,7 +357,10 @@ const createApp = () => {
 
   // Admin routes (protected by admin secret)
   if (process.env.ADMIN_SECRET) {
+    console.log('[STARTUP] Admin routes enabled - ADMIN_SECRET is set');
     app.use('/admin', adminRoutes);
+  } else {
+    console.log('[STARTUP] Admin routes DISABLED - ADMIN_SECRET not set');
   }
 
   // Auth middleware for protected API routes

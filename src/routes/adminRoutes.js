@@ -13,6 +13,12 @@ if (!ADMIN_SECRET) {
 
 // Middleware to protect admin routes
 const adminAuth = (req, res, next) => {
+  // DEBUG: Log what we're checking
+  console.log('[DEBUG] Admin auth check:');
+  console.log('[DEBUG] Expected ADMIN_SECRET:', ADMIN_SECRET ? `${ADMIN_SECRET.substring(0, 10)}...` : 'UNDEFINED');
+  console.log('[DEBUG] Received header:', req.headers['x-admin-secret'] ? `${req.headers['x-admin-secret'].substring(0, 10)}...` : 'UNDEFINED');
+  console.log('[DEBUG] All headers:', req.headers);
+
   const secret = req.headers['x-admin-secret'];
   if (secret !== ADMIN_SECRET) {
     return res.status(401).json({

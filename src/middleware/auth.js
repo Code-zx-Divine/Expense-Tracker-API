@@ -1,13 +1,22 @@
 const jwt = require('jsonwebtoken');
+const mongoose = require('mongoose');
 const User = require('../models/User');
 const ApiKey = require('../models/ApiKey');
 const Usage = require('../models/Usage');
 const logger = require('../config/logger');
 const CONSTANTS = require('../utils/constants');
 
+// RapidAPI configuration
+const RAPIDAPI_ENABLED = process.env.RAPIDAPI_ENABLED === 'true';
+const RAPIDAPI_USER_ID = process.env.RAPIDAPI_USER_ID
+  ? new mongoose.Types.ObjectId(process.env.RAPIDAPI_USER_ID)
+  : new mongoose.Types.ObjectId('507f1f77bcf86cd799439011'); // Fixed fallback ObjectId
+const RAPIDAPI_USER_EMAIL = process.env.RAPIDAPI_USER_EMAIL || 'rapidapi@example.com';
+
 /**
  * JWT & API Key Authentication Middleware
  * Supports both JWT Bearer tokens and X-RapidAPI-Key headers
+ * Also supports RapidAPI proxy mode (skip DB validation when RAPIDAPI_ENABLED)
  * Also enforces quotas and tracks usage for API keys
  *
  * Usage:
@@ -40,6 +49,8 @@ const auth = {
           user = await User.findById(decoded.userId);
           authType = 'jwt';
 
+          console.log('[AUTH] JWT authentication successful:', { userId: decoded.userId });
+
           if (!user) {
             return res.status(401).json({
               success: false,
@@ -60,6 +71,7 @@ const auth = {
           if (error.name !== 'JsonWebTokenError' && error.name !== 'TokenExpiredError') {
             throw error;
           }
+          console.log('[AUTH] JWT validation failed, trying API key fallback:', error.message);
           // JWT error - will try API key below
         }
       }
@@ -84,13 +96,73 @@ const auth = {
           }
         }
 
+        // RAPIDAPI PROXY MODE: If RapidAPI is enabled and key is present, skip DB validation
+        if (RAPIDAPI_ENABLED && apiKey && apiKey.startsWith('exp_')) {
+          console.log('[AUTH] RapidAPI mode enabled - accepting X-RapidAPI-Key without DB validation');
+          console.log('[AUTH] API key (masked):', apiKey.substring(0, 8) + '...');
+
+          // Create a minimal user object for RapidAPI requests
+          // Uses a fixed ObjectId (no DB query needed)
+          user = {
+            _id: RAPIDAPI_USER_ID,
+            email: RAPIDAPI_USER_EMAIL,
+            name: 'RapidAPI User',
+            role: 'subscriber',
+            status: 'active',
+            isRapidAPI: true // Flag to identify RapidAPI-sourced requests
+          };
+          authType = 'rapidapi';
+
+          // Still set usage tracking headers for RapidAPI (with dummy values)
+          res.setHeader('X-API-Quota-Monthly', 'unlimited');
+          res.setHeader('X-API-Quota-Daily', 'unlimited');
+          res.setHeader('X-API-Usage-Month', 'N/A');
+          res.setHeader('X-API-Usage-Day', 'N/A');
+
+          // Track usage in a separate collection for RapidAPI
+          const Usage = require('../models/Usage');
+          const startTime = Date.now();
+          const yearMonth = new Date().toISOString().slice(0, 7);
+          const today = new Date().getDate();
+
+          res.on('finish', async () => {
+            try {
+              const responseTime = Date.now() - startTime;
+              const usage = new Usage({
+                apiKey: apiKey,
+                userId: 'rapidapi',
+                endpoint: req.originalUrl,
+                method: req.method,
+                statusCode: res.statusCode,
+                responseTime,
+                ip: req.ip,
+                userAgent: req.get('User-Agent') || '',
+                requestSize: Buffer.byteLength(JSON.stringify(req.body || {}), 'utf8'),
+                responseSize: Buffer.byteLength(JSON.stringify(res.locals.responseBody || {}), 'utf8'),
+                yearMonth,
+                day: today,
+                isRapidAPI: true
+              });
+              await usage.save();
+              console.log('[AUTH] RapidAPI usage tracked:', { endpoint: req.path, status: res.statusCode });
+            } catch (error) {
+              console.error('[AUTH] Failed to track RapidAPI usage:', error.message);
+            }
+          });
+
+          return next();
+        }
+
+        // Normal API key validation (DB lookup)
         if (apiKey) {
+          console.log('[AUTH] API key provided, validating against database:', apiKey.substring(0, 8) + '...');
           apiKeyDoc = await ApiKey.findOne({
             key: apiKey,
             status: 'active'
           });
 
           if (apiKeyDoc) {
+            console.log('[AUTH] API key found in database:', { email: apiKeyDoc.email, plan: apiKeyDoc.plan });
             // Check expiry
             if (apiKeyDoc.expiresAt && apiKeyDoc.expiresAt < new Date()) {
               apiKeyDoc.status = 'expired';
@@ -105,7 +177,7 @@ const auth = {
 
             // Check monthly quota
             if (apiKeyDoc.usageCurrentMonth >= apiKeyDoc.monthlyLimit) {
-              logger.warn('Monthly quota exceeded', {
+              console.warn('[AUTH] Monthly quota exceeded', {
                 apiKey: apiKey.substring(0, 8),
                 email: apiKeyDoc.email,
                 usage: apiKeyDoc.usageCurrentMonth,
@@ -122,6 +194,12 @@ const auth = {
 
             // Check daily quota
             if (apiKeyDoc.usageToday >= apiKeyDoc.dailyLimit) {
+              console.warn('[AUTH] Daily quota exceeded', {
+                apiKey: apiKey.substring(0, 8),
+                email: apiKeyDoc.email,
+                usage: apiKeyDoc.usageToday,
+                limit: apiKeyDoc.dailyLimit
+              });
               return res.status(429).json({
                 success: false,
                 error: 'DailyQuotaExceeded',
@@ -139,6 +217,7 @@ const auth = {
               const rl = global.apiRateLimit.get(rateKey);
               if (now < rl.reset) {
                 if (rl.count >= apiKeyDoc.rateLimitPerMinute) {
+                  console.warn('[AUTH] Rate limit exceeded', { apiKey: apiKey.substring(0, 8), count: rl.count, limit: apiKeyDoc.rateLimitPerMinute });
                   return res.status(429).json({
                     success: false,
                     error: 'RateLimitExceeded',
@@ -195,7 +274,8 @@ const auth = {
                   requestSize: Buffer.byteLength(JSON.stringify(req.body || {}), 'utf8'),
                   responseSize: Buffer.byteLength(JSON.stringify(res.locals.responseBody || {}), 'utf8'),
                   yearMonth,
-                  day: today
+                  day: today,
+                  isRapidAPI: false
                 });
                 await usage.save();
 
@@ -204,11 +284,20 @@ const auth = {
                 apiKeyDoc.usageCurrentMonth += 1;
                 apiKeyDoc.lastUsedAt = new Date();
                 await apiKeyDoc.save();
+
+                console.log('[AUTH] API key usage tracked:', {
+                  email: apiKeyDoc.email,
+                  endpoint: req.path,
+                  status: res.statusCode,
+                  monthUsage: `${apiKeyDoc.usageCurrentMonth}/${apiKeyDoc.monthlyLimit}`,
+                  dayUsage: `${apiKeyDoc.usageToday}/${apiKeyDoc.dailyLimit}`
+                });
               } catch (error) {
-                logger.error('Failed to track API usage:', error.message);
+                console.error('[AUTH] Failed to track API usage:', error.message);
               }
             });
           } else {
+            console.warn('[AUTH] Invalid API key:', apiKey.substring(0, 8) + '...');
             return res.status(403).json({
               success: false,
               error: 'Forbidden',
@@ -220,6 +309,7 @@ const auth = {
 
       // 3. No valid authentication found
       if (!user) {
+        console.log('[AUTH] Authentication failed - no valid credentials provided');
         return res.status(401).json({
           success: false,
           error: 'Unauthorized',
@@ -236,9 +326,16 @@ const auth = {
       req.userId = user._id;
       req.authType = authType;
 
+      console.log('[AUTH] Request authenticated:', {
+        authType,
+        userId: user._id,
+        email: user.email,
+        path: req.path
+      });
+
       next();
     } catch (error) {
-      logger.error('Auth middleware error:', { error: error.message, stack: error.stack });
+      console.error('[AUTH] Middleware error:', { error: error.message, stack: error.stack });
       return res.status(500).json({
         success: false,
         error: 'InternalServerError',
@@ -309,8 +406,8 @@ const auth = {
    * Checks if user has exceeded rate limit (1000 requests per hour)
    */
   rateLimit: async (req, res, next) => {
-    // Skip if no user or if using API key authentication (quotas handled separately)
-    if (!req.user || req.authType === 'api_key') {
+    // Skip if no user or if using API key or RapidAPI authentication (quotas handled separately)
+    if (!req.user || ['api_key', 'rapidapi'].includes(req.authType)) {
       return next();
     }
 
