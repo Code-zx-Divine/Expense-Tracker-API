@@ -81,24 +81,21 @@ const auth = {
         // Check for API key in multiple places:
         // - x-rapidapi-key header (RapidAPI standard)
         // - x-api-key header (alternative)
-        // - Authorization: Bearer <exp_key> (if token starts with exp_)
+        // - Authorization: Bearer <key> (supports API key bearer tokens too)
         let apiKey = req.headers['x-rapidapi-key'] || req.headers['x-api-key'] || req.query['rapidapi-key'];
 
-        // Also check Authorization header if it starts with "exp_"
-        if (!apiKey) {
-          const authHeader = req.headers.authorization;
-          if (authHeader && authHeader.startsWith('Bearer ')) {
-            const token = authHeader.substring(7);
-            // If token looks like an API key (starts with exp_), use it
-            if (token.startsWith('exp_')) {
-              apiKey = token;
-            }
-          }
+        if (!apiKey && authHeader && authHeader.startsWith('Bearer ')) {
+          apiKey = authHeader.substring(7).trim();
         }
 
-        // RAPIDAPI PROXY MODE: If RapidAPI is enabled and key is present, skip DB validation
-        if (RAPIDAPI_ENABLED && apiKey && apiKey.startsWith('exp_')) {
-          console.log('[AUTH] RapidAPI mode enabled - accepting X-RapidAPI-Key without DB validation');
+        if (apiKey) {
+          apiKey = apiKey.toString();
+        }
+
+        // RAPIDAPI PROXY MODE: If RapidAPI is enabled and any API key is present,
+        // accept it without performing MongoDB API key validation.
+        if (RAPIDAPI_ENABLED && apiKey) {
+          console.log('[AUTH] RapidAPI mode enabled - accepting API key without DB validation');
           console.log('[AUTH] API key (masked):', apiKey.substring(0, 8) + '...');
 
           // Create a minimal user object for RapidAPI requests
@@ -315,9 +312,9 @@ const auth = {
           error: 'Unauthorized',
           message: 'Authentication required. Provide one of:\n' +
                    '  - Authorization: Bearer <JWT_token>\n' +
-                   '  - Authorization: Bearer <exp_api_key>\n' +
-                   '  - X-RapidAPI-Key: <exp_api_key>\n' +
-                   '  - X-API-Key: <exp_api_key>'
+                   '  - Authorization: Bearer <api_key>\n' +
+                   '  - X-RapidAPI-Key: <api_key>\n' +
+                   '  - X-API-Key: <api_key>'
         });
       }
 
