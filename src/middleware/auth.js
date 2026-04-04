@@ -7,7 +7,9 @@ const logger = require('../config/logger');
 const CONSTANTS = require('../utils/constants');
 
 // RapidAPI configuration
-const RAPIDAPI_ENABLED = process.env.RAPIDAPI_ENABLED === 'true';
+const RAPIDAPI_ENABLED = process.env.RAPIDAPI_ENABLED
+  ? process.env.RAPIDAPI_ENABLED.toLowerCase() === 'true'
+  : false;
 const RAPIDAPI_USER_ID = process.env.RAPIDAPI_USER_ID
   ? new mongoose.Types.ObjectId(process.env.RAPIDAPI_USER_ID)
   : new mongoose.Types.ObjectId('507f1f77bcf86cd799439011'); // Fixed fallback ObjectId
@@ -32,6 +34,8 @@ const auth = {
       let user = null;
       let authType = null;
       let apiKeyDoc = null;
+
+      console.log('[AUTH] Starting authentication check, RAPIDAPI_ENABLED:', RAPIDAPI_ENABLED);
 
       // 1. Try JWT authentication first
       const authHeader = req.headers.authorization;
@@ -91,6 +95,8 @@ const auth = {
         if (apiKey) {
           apiKey = apiKey.toString();
         }
+
+        console.log('[AUTH] API key check - RAPIDAPI_ENABLED:', RAPIDAPI_ENABLED, 'apiKey present:', !!apiKey, 'apiKey value:', apiKey ? apiKey.substring(0, 8) + '...' : 'none');
 
         // RAPIDAPI PROXY MODE: If RapidAPI is enabled and any API key is present,
         // accept it without performing MongoDB API key validation.

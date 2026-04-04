@@ -124,6 +124,9 @@ if (!fs.existsSync(logsDir)) {
 const createApp = () => {
   const app = express();
 
+  // Trust proxy for correct IP detection (required for Render deployment)
+  app.set('trust proxy', 1);
+
   // 1. Request ID - first middleware for tracing
   const requestId = require('./middleware/requestId');
   app.use(requestId);
