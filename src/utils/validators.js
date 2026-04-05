@@ -59,6 +59,20 @@ const validateTransactionCreate = [
   ...validateTransactionDate
 ];
 
+const validateTransactionCreateExpense = [
+  ...validateTransactionAmount,
+  ...validateCategoryId,
+  ...validateTransactionDescription,
+  ...validateTransactionDate
+];
+
+const validateTransactionCreateIncome = [
+  ...validateTransactionAmount,
+  ...validateCategoryId,
+  ...validateTransactionDescription,
+  ...validateTransactionDate
+];
+
 const validateTransactionUpdate = [
   ...validateTransactionAmount,
   ...validateCategoryId,
@@ -202,6 +216,8 @@ const checkValidation = (req, res, next) => {
 module.exports = {
   // Transaction validators
   validateTransactionCreate,
+  validateTransactionCreateExpense,
+  validateTransactionCreateIncome,
   validateTransactionUpdate,
   validateTransactionId,
 

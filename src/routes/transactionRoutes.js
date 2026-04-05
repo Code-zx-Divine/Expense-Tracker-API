@@ -71,6 +71,8 @@ const {
  */
 const {
   validateTransactionCreate,
+  validateTransactionCreateExpense,
+  validateTransactionCreateIncome,
   validateTransactionUpdate,
   validateTransactionId,
   validatePagination,
@@ -143,7 +145,7 @@ const asyncHandler = require('../middleware/asyncHandler');
 // POST /api/transactions/expense - Add expense
 router.post(
   '/expense',
-  validateTransactionCreate,
+  validateTransactionCreateExpense,
   checkValidation,
   asyncHandler(addExpense)
 );
@@ -151,7 +153,7 @@ router.post(
 // POST /api/transactions/income - Add income
 router.post(
   '/income',
-  validateTransactionCreate,
+  validateTransactionCreateIncome,
   checkValidation,
   asyncHandler(addIncome)
 );
